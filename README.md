@@ -13,9 +13,11 @@ This script is designed to summarize development-related discussions from the Er
 ### Prerequisites
 - Python 3.x
 - OpenAI API key
+- Discord Bot key
 - Discord webhook URL
 - Environment configuration file (`.env`) with necessary variables
-- A CSV export of the relevant Discord chat logs
+- [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) installed to export the chats. 
+
 
 ### Installation
 1. **Clone the repository**:
