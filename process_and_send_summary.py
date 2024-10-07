@@ -7,7 +7,6 @@ import glob
 import csv
 import re
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,119 +16,140 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 EXPORT_DIR = os.getenv("EXPORT_DIR", "./")  # Default to "./" if not set
 DISCORD_SERVER_ID = os.getenv("DISCORD_SERVER_ID")
-SUMMARY_PROMPT = os.getenv("SUMMARY_PROMPT")
 
 # Check if essential environment variables are set
-def check_env_variables():
-    missing_vars = []
-    if not OPENAI_API_KEY:
-        missing_vars.append("OPENAI_API_KEY")
-    if not DISCORD_WEBHOOK_URL:
-        missing_vars.append("DISCORD_WEBHOOK_URL")
-    if not DISCORD_SERVER_ID:
-        missing_vars.append("DISCORD_SERVER_ID")
-    if not SUMMARY_PROMPT:
-        missing_vars.append("SUMMARY_PROMPT")
-    if missing_vars:
-        print(f"Error: Missing environment variables: {', '.join(missing_vars)}")
-        exit(1)
+if not OPENAI_API_KEY:
+    print("Error: OPENAI_API_KEY is not set in the environment.")
+    exit(1)
+if not DISCORD_WEBHOOK_URL:
+    print("Error: DISCORD_WEBHOOK_URL is not set in the environment.")
+    exit(1)
+if not DISCORD_SERVER_ID:
+    print("Error: DISCORD_SERVER_ID is not set in the environment.")
+    exit(1)
 
-check_env_variables()
-
-# Set OpenAI API key
+# Set your OpenAI API key
 openai.api_key = OPENAI_API_KEY
 
-# Find the most recently modified exported CSV file
-def get_latest_csv_file(directory):
-    print("Finding the most recently modified CSV file...")
-    list_of_files = glob.glob(f'{directory}/*.csv')
-    if not list_of_files:
-        print("No CSV files found in the export directory.")
-        exit(1)
-    return max(list_of_files, key=os.path.getmtime)
 
-latest_file = get_latest_csv_file(EXPORT_DIR)
+# Find the most recently modified exported CSV file
+print("Finding the most recently modified CSV file...")
+list_of_files = glob.glob(f'{EXPORT_DIR}/*.csv')
+if not list_of_files:
+    print("No CSV files found in the export directory.")
+    exit(1)
+
+latest_file = max(list_of_files, key=os.path.getmtime)
 
 # Read the exported chat log from the CSV file
-def read_chat_log(csv_file, priority_authors):
-    print("Reading the exported chat log from the CSV file...")
-    chat_log = []
-    after_dev_update_call = False
-    dev_update_time = None
-    dev_update_message_link = None
-    with open(csv_file, newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            author = row['author'].lower()
-            message_link = f"https://discord.com/channels/{DISCORD_SERVER_ID}/{row['channel_id']}/{row['msg_id']}"
-            timestamp_str = row['timestamp']
-            timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+print("Reading the exported chat log from the CSV file...")
+chat_log = []
+with open(latest_file, newline='', encoding='utf-8') as csvfile:
+    reader = csv.DictReader(csvfile)
+    for row in reader:
+        # Construct a hyperlink for each message using its message ID and channel ID
+        message_link = f"https://discord.com/channels/{DISCORD_SERVER_ID}/{row['channel_id']}/{row['msg_id']}"
+        # Add author and hyperlinked message to the log
+        chat_log.append(f"**@{row['author']}**: [{row['msg']}]({message_link})")
 
-            # Check if this message is the dev update call
-            if "share your updates" in row['msg'].lower():
-                after_dev_update_call = True
-                dev_update_time = timestamp
-                dev_update_message_link = message_link
-                continue
-
-            # Prioritize messages after the dev update call, especially those within a few hours and with bullet points
-            if after_dev_update_call and dev_update_time:
-                time_diff = timestamp - dev_update_time
-                if time_diff <= timedelta(hours=4) and (author in priority_authors or "-" in row['msg'] or "*" in row['msg'] or "important" in row['msg'].lower() or "update" in row['msg'].lower()):
-                    chat_log.append(f"**@{row['author']}**: [{row['msg']}]({message_link})")
-    return chat_log, dev_update_message_link
-
-PRIORITY_AUTHORS = ["kushti", "mgpai", "cheeseenthusiast", "zargarzadehmoein", "pgr456", "arobsn", "luivatra"]
-chat_log, dev_update_message_link = read_chat_log(latest_file, PRIORITY_AUTHORS)
 
 # Combine chat log into a single string
+print("Combining chat log into a single string...")
 chat_log_combined = "\n".join(chat_log)
 
 # Function to clean up unnecessary content in the response
 def clean_summary(summary):
-    return summary.replace("Summary of Activities from", "", 1).strip()
+    # Remove repeated titles or unwanted phrases
+    cleaned_summary = summary.replace("Summary of Activities from", "", 1).strip()
+    return cleaned_summary
 
 # Function to check if the summary meets the requirements
 def check_summary_requirements(summary):
+    # Check if the summary contains at least 3 links
     link_pattern = r"https?://\S+"
     links = re.findall(link_pattern, summary)
-    return len(links) >= 3
+    # Check if the summary contains more than 3 emojis
+    emoji_pattern = re.compile(r'[^\w\s,]', re.UNICODE)
+    emojis = emoji_pattern.findall(summary)
+    return len(links) >= 3 and len(emojis) > 3
+
+# Prompt for summarization
+prompt = """
+You are tasked with summarizing the following discussions from the development channel into a concise summary. Your goal is to extract only the most significant and relevant information that would interest the entire community.
+
+Guidelines:
+
+1. Focus on key updates, announcements, new ideas, and significant discussions.
+2. Exclude routine messages, personal chats, and less relevant content.
+3. Format each point concisely, prefixed with an appropriate emoji.
+4. Maintain a neutral and informative tone.
+5. Ensure the final summary fits within 2000 characters.
+6. Use bullet points and emojis for each item. Use plain text for names, and hyperlink any references to projects or discussions using markdown syntax.
+7. Group similar usernames (like 'Kushti0978' and 'kushti') into '@kushti'.
+8. Include a hyperlink to the original message using the format '@username [discussion topic](message_link)'.
+9. Avoid unnecessary context or phrases like 'hinting at.'
+10. Each person (@username) should have only one bullet. If they have multiple points, merge them into one.
+11. This covers the last week's chats, so avoid using phrases like 'tomorrow.'
+
+Below are the chat logs:
+
+{chat_logs}
+"""
+
 
 # Function to generate and check the summary
 def generate_and_check_summary():
-    prompt = SUMMARY_PROMPT.format(chat_logs=chat_log_combined)
-
     suitable_summaries = []
     for i in range(15):
         print(f"Attempt {i + 1} to generate a suitable summary...")
+        # Combine the prompt with the full chat log
         full_prompt = f"{prompt}\n\n{chat_log_combined}"
 
-        response = openai.ChatCompletion.create(
+        # Send the entire log to OpenAI for summarization, limiting the response to 1500 tokens (to keep it concise)
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": full_prompt}
             ],
-            temperature=0.3
+            # max_tokens=1500,
+            temperature=0.7
         )
 
-        summary = response['choices'][0]['message']['content']
-        cleaned_summary = clean_summary(summary)
-        final_summary = f"## Summary of development discussions this week!\n\n{cleaned_summary}\n\n[Link to the start of the weekly dev chat]({dev_update_message_link})"
+        response_dict = response.model_dump()  # Convert to dictionary
+        summary = response_dict["choices"][0]["message"]["content"]  # Access the message
 
+        cleaned_summary = clean_summary(summary)
+
+        # Add the title back only once
+        final_summary = f"## Summary of development discussions this week!\n\n{cleaned_summary}"
+
+        # Check if the summary meets the requirements
         if check_summary_requirements(final_summary):
-            suitable_summaries.append(final_summary)
+            link_pattern = r"https?://\S+"
+            links = re.findall(link_pattern, final_summary)
+            emoji_pattern = re.compile(r'[^\w\s,]', re.UNICODE)
+            emojis = emoji_pattern.findall(final_summary)
+            bullets = final_summary.count('- ')
+            print(f"Summary meets requirements with {len(links)} links, {len(emojis)} emojis, and {bullets} bullets.")
+            suitable_summaries.append((final_summary, len(links)))
             if len(suitable_summaries) == 5:
                 break
         else:
             print(f"Attempt {i + 1}: Summary does not meet requirements.")
+            print(final_summary)
 
     if suitable_summaries:
-        return max(suitable_summaries, key=lambda x: len(re.findall(r'https?://\S+', x)))
+        print("Picking the suitable summary with the most links...")
+        best_summary = max(suitable_summaries, key=lambda x: x[1])[0]
     else:
-        return f"Summary of development discussions this week!\n\n- No suitable summary could be generated.\n\n[Link to the start of the weekly dev chat]({dev_update_message_link})"
+        print("Failed to generate a suitable summary after 15 attempts.")
+        best_summary = "Summary of development discussions this week!\n\n- No suitable summary could be generated."
 
-# Generate the summary
+    return best_summary
+
+# Generate the summary and check if it meets the requirements
+print("Generating final summary...")
 final_summary = generate_and_check_summary()
 
 # Remove linebreaks between bullets in the final summary
@@ -149,19 +169,34 @@ def send_to_discord_in_chunks(content, webhook_url, chunk_size=2000):
         chunks.append(current_chunk.strip())
 
     for i, chunk in enumerate(chunks):
-        response = requests.post(webhook_url, json={"content": chunk}, headers={"Content-Type": "application/json"})
+        data = {
+            "content": chunk
+        }
+        headers = {
+            "Content-Type": "application/json"
+        }
+        response = requests.post(webhook_url, json=data, headers=headers)
+
         if response.status_code == 204:
             print(f"Chunk {i + 1} sent successfully.")
         else:
             print(f"Failed to send chunk {i + 1}: {response.status_code}")
 
-# Send the final summary to Discord
+# Check if the summary is within Discord's character limit
 if len(final_summary) > 2000:
     print(f"Summary exceeds 2000 characters, sending in chunks.")
     send_to_discord_in_chunks(final_summary, DISCORD_WEBHOOK_URL)
 else:
     print("Sending final summary to Discord...")
-    response = requests.post(DISCORD_WEBHOOK_URL, json={"content": final_summary}, headers={"Content-Type": "application/json"})
+    # Send the final summary to Discord in one message
+    data = {
+        "content": final_summary
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(DISCORD_WEBHOOK_URL, json=data, headers=headers)
+
     if response.status_code == 204:
         print("Summary sent to Discord successfully.")
     else:
