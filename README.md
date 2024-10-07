@@ -45,7 +45,8 @@ This script is designed to summarize development-related discussions from the Er
 ### Running the Script
 1. **Execute the script**:
    ```bash
-   python dev_summary_to_discord.py
+   chmod +x start.sh
+   ./start.sh
    ```
 2. The script will:
    - Load the latest CSV file from the specified directory.
@@ -67,7 +68,9 @@ This script is currently set up specifically for Ergo's Discord server. If you w
 ## Automation
 
 ```
-chmod +x enable_service.sh)
+chmod +x enable_service.sh
+```
+
 ## Contributing
 Feel free to fork the repository and create pull requests if you want to add new features, fix bugs, or make the script more generalized. Contributions are welcome!
 
