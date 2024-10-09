@@ -42,7 +42,17 @@ This script is designed to summarize development-related discussions from the Er
 
 4. **Export Discord chat logs** in CSV format and save them in the directory specified by `EXPORT_DIR`. The CSV should have columns such as `author`, `msg`, `msg_id`, `channel_id`, and `timestamp`.
 
-### Running the Script
+### Running the Script(s)
+
+#### Discord -> Twitter Auto-post
+
+```
+./export_chat.sh 1d channel
+python3 tweet.py
+```
+
+#### Discord -> Newsletter
+
 1. **Execute the script**:
    ```bash
    chmod +x start.sh
@@ -57,7 +67,7 @@ This script is designed to summarize development-related discussions from the Er
 ## Customization
 This script is currently set up specifically for Ergo's Discord server. If you want to use it for another community or server, you'll need to customize the following parts:
 
-1. **Environment Variables**: Update `.env` file to reflect your Discord server's details (e.g., webhook URL, server ID, priority authors).
+1. **Environment Variables**: Rename `.sample_env` to `.env` file to reflect your Discord server's details (e.g., webhook URL, server ID, priority authors).
 
 2. **Priority Authors**: The script uses `PRIORITY_AUTHORS` to give emphasis to core contributors. You can adjust this list in the `.env` file to match your community's needs.
 

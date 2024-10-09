@@ -4,206 +4,191 @@ import csv
 import re
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from collections import Counter, defaultdict
+from collections import Counter
+import time
+import argparse
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Configuration Variables
-EXPORT_DIR = os.getenv("EXPORT_DIR")
-print(f"Export directory set to: {EXPORT_DIR}")  # Directory containing exported chat logs, set in .env file
-USER_ALIAS = os.getenv("USER_ALIAS")  # Comma-separated list of username alias mappings (e.g., 'original1=alias1,original2=alias2'), set in .env file
+USER_ALIAS = os.getenv("USER_ALIAS")
+CHANNEL_ID_REGEX = os.getenv("CHANNEL_ID_REGEX", r'\[(\d+)\]')
 
-# Function to sanitize the message content by removing line breaks, trimming spaces, and removing duplicate bot tags
+# Parse the input directory or file argument
+parser = argparse.ArgumentParser(description="Sanitize chat logs")
+parser.add_argument('--input-dir', type=str, help="Directory or file containing the exported chat logs")
+args = parser.parse_args()
+
+# Set the target path from the parsed argument or default to the first folder in 'output/' by last modified date
+if args.input_dir:
+    target_path = args.input_dir
+else:
+    output_folders = [d for d in glob.glob(os.path.join('output', '*')) if os.path.isdir(d)]
+    if not output_folders:
+        exit("No folders found in 'output/' directory.")
+    target_path = max(output_folders, key=os.path.getmtime)
+    print(f"No --input-dir provided. Defaulting to the most recently modified folder in 'output/': {target_path}")
+
+# Check if the target path is a file or a directory
+if os.path.isfile(target_path):
+    # Single file mode
+    list_of_files = [target_path]
+    print(f"Processing single file: {target_path}")
+    # Set the output directory to the directory containing the file
+    output_directory = os.path.dirname(target_path)
+elif os.path.isdir(target_path):
+    # Directory mode: Find all HTML files in the target directory and its subdirectories
+    list_of_files = glob.glob(os.path.join(target_path, '**', '*.html'), recursive=True)
+    if not list_of_files:
+        exit("No HTML files found in the target directory.")
+    print(f"Processing directory: {target_path}")
+    # Set the output directory to the target path
+    output_directory = target_path
+else:
+    exit("Invalid path: Please provide a valid file or directory path.")
+
+# Function to sanitize the message content
 def sanitize_message(message_text, author):
-    # Remove any 'username BOT' that appears duplicated in the message
-    bot_pattern = fr"{author} BOT"
-    sanitized_text = re.sub(bot_pattern, "", message_text, flags=re.IGNORECASE).strip()
-
-    # Remove line breaks, extra spaces, and dates/times in a single regex operation
-    sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip()  # Replace multiple spaces or line breaks with a single space
-    sanitized_text = re.sub(r'\d+/\d+/\d+\s\d+:\d+\s[APM]{2}', '', sanitized_text)  # Remove dates and times
-
-    # Ensure message is not empty after sanitization
-    if not sanitized_text:
-        sanitized_text = "[No meaningful content]"
-    
-    return sanitized_text
+    sanitized_text = re.sub(fr"{author} BOT", "", message_text, flags=re.IGNORECASE).strip()
+    sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip()
+    sanitized_text = re.sub(r'\d+/\d+/\d+\s\d+:\d+\s[APM]{2}', '', sanitized_text)
+    return sanitized_text if sanitized_text else "[No meaningful content]"
 
 # Function to extract the first @username from a forwarded message if the author is missing
 def extract_username_from_message(message_text):
-    # Regex to find the first instance of @username
     match = re.search(r'@([\w_]+)', message_text)
-    if match:
-        return match.group(1)
-    return "Unknown User"
+    return match.group(1) if match else "Unknown User"
 
-# Function to extract the timestamp from the message text if the timestamp is missing
+# Function to extract timestamp from message text if missing
 def extract_timestamp_from_message_text(message_text):
-    # Regex to find the date and time in the message text, accommodating for more variations in timestamp formats
-    match = re.search(r'((\d{1,2}/\d{1,2}/\d{2,4})\s+(\d{1,2}:\d{2}\s*[APM]{2}))', message_text)
-    if match:
-        return match.group(1)
-    # Additional regex to capture other timestamp formats, e.g., ISO format or different delimiters
-    match = re.search(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)', message_text)
-    if match:
-        return match.group(1)
-    return "Unknown Time"
+    match = re.search(r'((\d{1,2}/\d{1,2}/\d{2,4})\s+(\d{1,2}:\d{2}\s*[APM]{2}))', message_text) or re.search(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)', message_text)
+    return match.group(1) if match else "Unknown Time"
 
 # Function to apply user alias replacements
 def replace_user_alias(user):
-    user_alias_dict = dict(alias.split('=') for alias in USER_ALIAS.split(','))
-    return user_alias_dict.get(user, user)
+    if USER_ALIAS:
+        user_alias_dict = dict(alias.split('=') for alias in USER_ALIAS.split(','))
+        return user_alias_dict.get(user, user)
+    return user
 
 # Function to extract user, message id, channel id, message content, and timestamp in minimal CSV format
-def extract_minimal_messages(chat_log, channel_id_from_filename, channel_name):
+def extract_minimal_messages(chat_log, channel_name):
     soup = BeautifulSoup(chat_log, 'html.parser')
-    
-    # Find messages, assuming they are within div tags with a data-message-id attribute
     messages = soup.find_all('div', {'data-message-id': True})
     sanitized_messages = []
-    last_user = None  # Track the last known user
-    channel_id = channel_id_from_filename  # Initialize channel_id from filename
-    cached_parents = {}  # Cache parents with channel-id to avoid repeated lookups
-    previous_timestamp = None  # Track the last known timestamp
+    last_user, previous_timestamp = None, None
+    channel_id_match = re.search(CHANNEL_ID_REGEX, channel_name)
+    channel_id = channel_id_match.group(1) if channel_id_match else "Unknown_Channel_ID"
+    channel_name_clean = re.sub(CHANNEL_ID_REGEX, '', channel_name).strip()
+    channel_name_clean = re.sub(r'\[.*?\]', '', channel_name_clean).strip()
     
     for message in messages:
-        # Extract message ID
         message_id = message['data-message-id']
-        
-        # Extract message text and sanitize
         message_text = message.find('div', class_='chatlog__content').get_text().strip() if message.find('div', class_='chatlog__content') else "[No content]"
-
-        # Extract the author from the span with class 'chatlog__author' using the 'title' attribute
         user_tag = message.find('span', class_='chatlog__author')
-        if user_tag and 'title' in user_tag.attrs:
-            last_user = replace_user_alias(user_tag['title'])  # Update the last known user
-            user = last_user
-        elif last_user:
-            # If there's no user in the current message but we have a known last user, use it
-            user = last_user
-        else:
-            # If author is missing and no last known user, try to extract username from message
-            user = extract_username_from_message(message_text)
-            last_user = user  # Set this user as the last known user
-
-        # Extract timestamp from the span with class 'chatlog__timestamp'
+        user = replace_user_alias(user_tag['title']) if user_tag and 'title' in user_tag.attrs else (last_user or extract_username_from_message(message_text))
+        last_user = user
         timestamp_tag = message.find('span', class_='chatlog__timestamp')
-        if timestamp_tag:
-            timestamp = timestamp_tag.get_text().strip()
-            previous_timestamp = timestamp  # Update the last known timestamp
-        else:
-            # If timestamp is missing, use the previous known timestamp
-            timestamp = previous_timestamp if previous_timestamp else extract_timestamp_from_message_text(message_text)
-
-        # Sanitize the message text
+        timestamp = timestamp_tag.get_text().strip() if timestamp_tag else (previous_timestamp or extract_timestamp_from_message_text(message_text))
+        previous_timestamp = timestamp
         sanitized_message = sanitize_message(message_text, user)
-        
-        # Append author (last_user), message, message_id, channel_id, channel_name, and timestamp to the list
         if sanitized_message != '[No content]' and user.lower() != 'captain hook':
-            sanitized_messages.append([user, sanitized_message, message_id, channel_id, channel_name, timestamp])
-        
+            sanitized_messages.append([user, sanitized_message, message_id, channel_id, channel_name_clean, timestamp])
     return sanitized_messages
 
-# Find the most recently modified exported folder
-list_of_dirs = glob.glob(os.path.join(EXPORT_DIR, '*'))
-list_of_dirs = [d for d in list_of_dirs if os.path.isdir(d) and not d.endswith('html_Files')]  # Skip directories ending with 'html_Files'
-list_of_dirs = [d for d in list_of_dirs if os.path.isdir(d)]  # Ensure we only get directories
-if not list_of_dirs:
-    print("No export directories found in the output directory.")
-    exit(1)
-
-latest_dir = max(list_of_dirs, key=os.path.getmtime, default=None)
-if latest_dir:
-    print(f"Latest directory found: {latest_dir}")
-else:
-    print("No export directories found.")
-print(f"Latest directory found: {latest_dir}")
-print("Scanning directory for HTML files...")
-if not latest_dir:
-    print("No export directories found in the output directory.")
-    exit(1)
-
-# Find all HTML files in the latest directory
-list_of_files = glob.glob(os.path.join(latest_dir, '**', '*.html'), recursive=True)
-print(f"HTML files found: {list_of_files}")
-print("Extracting messages from HTML files...")
-print(f"Total HTML files found: {len(list_of_files)}")
-if not list_of_files:
-    print("No HTML files found in the latest export directory.")
-    exit(1)
-
 sanitized_messages = []
-# Read each exported chat log and extract messages
+regional_messages = []
+regional_channels = [
+    '🇷🇺│russkiye', '🇮🇹│italiana', '🇮🇩│indonesian', '🇻🇳┃vietnam', '🇪🇸│espanol', '🇪🇸│espanol-mining',
+    '🌍│regional-channels', '🔊│regional-outreach', '🇦🇪│arabic', '🇦🇺│australia', '🇦🇱│balkans', '🇨🇦│canada', '🇧🇪│belgium',
+    '🇨🇭│chinese', '🇩🇰│denmark', '🇩🇪│deutsch', '🇫🇷│francais', '🇮🇳│india', '🇮🇪│ireland', '🇬🇧│uk', '🇺🇸│usa', '🇯🇵│日本語', '🇱🇻│latvia', '🇹🇷│türk',
+    '🇰🇷│한국어', '🇬🇷│ελληνικά', '🇲🇽│mexico', '🇳🇱│nederlands', '🇮🇱│עברית', '🇵🇱│polskie', '🇵🇰│pakistan', '🇵🇭│pilipino', '🇵🇹│português',
+    '🇷🇴│romania', '🇸🇪│svenska', '🇸🇰│slovakia', '🇸🇮│slovenia', '🇦🇲│armenian'
+]
+
 for html_file in list_of_files:
-    # Extract channel ID and name from the filename
-    channel_id_match = re.search(r'\[(\d+)\]', html_file)
-    channel_id_from_filename = channel_id_match.group(1) if channel_id_match else None
-    channel_name_match = re.search(r'- (.*?) \[', html_file)
-    channel_name = channel_name_match.group(1).strip() if channel_name_match else None
-
-    # Fallback if pattern matching failed
-    if not channel_id_from_filename or not channel_name:
-        # Attempt to extract from different filename format
-        channel_id_from_filename = channel_id_from_filename or "Unknown Channel"
-        channel_name = channel_name or os.path.splitext(os.path.basename(html_file))[0]
-
+    print(f"Processing file: {html_file}")
     with open(html_file, 'r', encoding='utf-8') as file:
         chat_log = file.read()
-        extracted_messages = extract_minimal_messages(chat_log, channel_id_from_filename, channel_name)
-        print(f"Extracted {len(extracted_messages)} messages from {html_file}")
-        sanitized_messages.extend(extracted_messages)
-
-# Generate the sanitized output file name based on the latest directory
-date_range = os.path.basename(latest_dir).split('_')[-1]
-SANITIZED_OUTPUT_FILE = f"sanitized_chat_log_{date_range.strip()}.csv"
+        channel_name_match = re.search(r'- (.*?) \[', html_file) or re.search(r'/([^/]+)\.html$', html_file)
+        channel_name = channel_name_match.group(1).strip() if channel_name_match else os.path.splitext(os.path.basename(html_file))[0]
+        messages = extract_minimal_messages(chat_log, channel_name)
+        print(f"Found {len(messages)} messages in {html_file}.")
+        for msg in messages:
+            if msg[4].lower() in [channel.lower() for channel in regional_channels]:
+                regional_messages.append(msg)
+            else:
+                sanitized_messages.append(msg)
 
 # Write sanitized data to output CSV file
-# Ensure directory exists before writing the file
-# No need to create a directory for the output file
-# Saving directly in the current directory
+SANITIZED_OUTPUT_FILE = os.path.join(output_directory, 'combined_cleaned.csv')
+REGIONAL_OUTPUT_FILE = os.path.join(output_directory, 'regional_cleaned.csv')
+
 with open(SANITIZED_OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f_out:
     writer = csv.writer(f_out)
-    # Write the header
     writer.writerow(['author', 'msg', 'msg_id', 'channel_id', 'channel_name', 'timestamp'])
-    # Write the sanitized messages
-    filtered_messages = [msg for msg in sanitized_messages if len(msg[1]) > 5]
-    print(f"Total messages after filtering short messages: {len(filtered_messages)}")
+    excluded_channels = [
+        'ergonauts', 'tabbypos', 'off-topic', 'moderators', 'foundation', 'treasurer', 'kushti', 
+        'peperg', 'sig-mining', '🔞│random', 'cyberverse', '❓│support', '🐣│sig-chat',
+        'mew-finance', 'greasycex', 'rosen', 'comet', 'spectrum', 'bober', 'ergone', 'ergopad', 'paideia', 'gluon-gold',
+        'rosen-port', 'thz-fm', 'blobs-topia', 'dexyusd-core', 'duckpools', 'ergo-ai', 'ergobass', 
+        'regional', 'announcements', 'bridge-tester'
+    ]
+    filtered_messages = [
+        msg for msg in sanitized_messages
+        if len(msg[1]) > 5 and msg[4].lower() != 'bridge-tester' and msg[0].lower() != 'chat_summary'
+        and 'Forwarded from' not in msg[1] and msg[1] != '[No meaningful content]' and len(msg[1]) >= 10
+        and msg[4].lower() not in [channel.lower() for channel in excluded_channels]
+        and 'ifttt' not in msg[1].lower() and 'ifttt' not in msg[0].lower()
+        and 'chat summariser' not in msg[1].lower() and 'chat summariser' not in msg[0].lower()
+    ]
+    forwarded_count = sum(1 for msg in sanitized_messages if 'Forwarded from' in msg[1])
+    excluded_channels_count = sum(1 for msg in sanitized_messages if msg[4].lower() in [channel.lower() for channel in excluded_channels])
+    total_dropped = len(sanitized_messages) - len(filtered_messages)
+    print(f"Number of messages containing 'Forwarded from': {forwarded_count}")
+    print(f"Number of messages from excluded channels: {excluded_channels_count}")
+    print(f"Total number of messages dropped: {total_dropped}")
+    print(f"Total number of messages in the final CSV: {len(filtered_messages)}")
     writer.writerows(filtered_messages)
 
-# Generate stats
-channel_counter = Counter([msg[4] for msg in sanitized_messages])
-user_counter = Counter([msg[0] for msg in sanitized_messages])
-user_character_counter = defaultdict(int)
+# Write regional messages to a separate CSV file
+with open(REGIONAL_OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f_regional_out:
+    writer = csv.writer(f_regional_out)
+    writer.writerow(['author', 'msg', 'msg_id', 'channel_id', 'channel_name', 'timestamp'])
+    writer.writerows(regional_messages)
+    print(f"Total number of regional messages written to the regional CSV: {len(regional_messages)}")
 
-# Count the total characters per user
-for msg in sanitized_messages:
-    user_character_counter[msg[0]] += len(msg[1])
+# Generate and print stats
+channel_counter = Counter(msg[4] for msg in filtered_messages)
+user_counter = Counter(msg[0] for msg in filtered_messages)
+user_character_counter = Counter({msg[0]: len(msg[1]) for msg in filtered_messages})
 
-# Deduplicate channel names by normalizing their names
-normalized_channel_counter = Counter()
-for channel, count in channel_counter.items():
-    normalized_channel = channel.lower().strip()
-    normalized_channel_counter[normalized_channel] += count
+most_active_channels = channel_counter.most_common(10)
+all_channels = channel_counter.most_common()
+most_active_users = user_counter.most_common(10)
+most_active_users_by_characters = user_character_counter.most_common(10)
 
-most_active_channels = normalized_channel_counter.most_common(5)
-most_active_users = user_counter.most_common(5)
-most_active_users_by_characters = sorted(user_character_counter.items(), key=lambda x: x[1], reverse=True)[:5]
-total_active_channels = len(normalized_channel_counter)
+# Determine the correct directory for saving the stats file
+stats_output_directory = output_directory if os.path.isdir(target_path) else os.path.dirname(target_path)
+STATS_OUTPUT_FILE = os.path.join(stats_output_directory, 'sanitization_stats.txt')
 
-# Print stats
-print("\n--- Stats ---")
-print(f"Total active channels: {total_active_channels}")
-print("5 most active channels:")
-for channel, count in most_active_channels:
-    print(f"{channel}: {count} messages")
+with open(STATS_OUTPUT_FILE, 'w', encoding='utf-8') as f_stats:
+    f_stats.write(f"--- Stats ---\nTotal active channels: {len(channel_counter)}\n")
+    f_stats.write("10 most active channels:\n")
+    for channel, count in most_active_channels:
+        f_stats.write(f"{channel}: {count} messages\n")
 
-print("\n5 most active users:")
-for user, count in most_active_users:
-    print(f"{user}: {count} messages")
+    f_stats.write("\nAll channels with message counts:\n")
+    for channel, count in all_channels:
+        f_stats.write(f"{channel}: {count} messages\n")
 
-print("\n5 most active users by character count:")
-for user, char_count in most_active_users_by_characters:
-    print(f"{user}: {char_count} characters")
+    f_stats.write("\n10 most active users:\n")
+    for user, count in most_active_users:
+        f_stats.write(f"{user}: {count} messages\n")
+    f_stats.write("\n10 most active users by character count:\n")
+    for user, char_count in most_active_users_by_characters:
+        f_stats.write(f"{user}: {char_count} characters\n")
 
-print("Processing complete.")
+print(f"Processing complete. Sanitized output written to: {SANITIZED_OUTPUT_FILE}")
+print(f"Stats output written to: {STATS_OUTPUT_FILE}")

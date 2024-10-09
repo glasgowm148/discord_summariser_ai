@@ -158,3 +158,31 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+scripts/DiscordChatExporter/.DS_Store
+scripts/DiscordChatExporter/AdvancedStringBuilder.dll
+scripts/DiscordChatExporter/AngleSharp.dll
+scripts/DiscordChatExporter/AsyncKeyedLock.dll
+scripts/DiscordChatExporter/CliFx.dll
+scripts/DiscordChatExporter/commands.md
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.deps.json
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.dll
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.exe
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.exe.config
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.pdb
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.runtimeconfig.json
+scripts/DiscordChatExporter/DiscordChatExporter.Cli.sh
+scripts/DiscordChatExporter/DiscordChatExporter.Core.dll
+scripts/DiscordChatExporter/DiscordChatExporter.Core.pdb
+scripts/DiscordChatExporter/Ergo Platform - Σ  ・〘 Sigmanauts 〙☰ - 🗣│sig-chat \[920637534046920744\].txt
+scripts/DiscordChatExporter/Ergo Platform - 🌎  ・〘 FINANCIAL 〙☰ - sigmausd \[802828538197573682\] (after 2015-01-01).txt
+scripts/DiscordChatExporter/Ergo Platform - 🌎  ・〘 Infra _ Interop 〙☰ - paideia \[964134121544749096\].html
+scripts/DiscordChatExporter/Ergo Platform - 🌎  ・〘 Infra _ Interop 〙☰ - paideia \[964134121544749096\].txt
+scripts/DiscordChatExporter/Gress.dll
+scripts/DiscordChatExporter/JsonExtensions.dll
+scripts/DiscordChatExporter/Polly.Core.dll
+scripts/DiscordChatExporter/Polly.dll
+scripts/DiscordChatExporter/RazorBlade.dll
+scripts/DiscordChatExporter/Spectre.Console.dll
+scripts/DiscordChatExporter/Superpower.dll
+scripts/DiscordChatExporter/WebMarkupMin.Core.dll
+scripts/DiscordChatExporter/YoutubeExplode.dll
