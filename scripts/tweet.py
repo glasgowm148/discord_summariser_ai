@@ -6,6 +6,7 @@ import pandas as pd
 from requests_oauthlib import OAuth1
 from dotenv import load_dotenv
 from pathlib import Path
+from datetime import datetime
 
 # === SECTION 1: Environment Setup ===
 load_dotenv()
@@ -158,10 +159,24 @@ def post_tweet(tweet):
         response_data = response.json()
         if response.status_code in (200, 201):
             print("Tweet posted successfully.")
+            log_sent_tweet(tweet)  # Log the tweet to sent_tweets.md
         else:
             print(f"Error posting tweet: {response_data['detail'] if 'detail' in response_data else response_data}")
     except Exception as e:
         print(f"Exception while posting tweet: {e}")
+
+# === SECTION 5A: Log Sent Tweets ===
+def log_sent_tweet(tweet):
+    log_file = Path('sent_tweets.md')
+    date_header = f"\n# {datetime.now().strftime('%Y-%m-%d')}\n"
+    try:
+        with open(log_file, 'a', encoding='utf-8') as f:
+            if not log_file.exists() or date_header not in open(log_file).read():
+                f.write(date_header)
+            f.write(f"- {tweet}\n")
+        print("Tweet logged successfully to sent_tweets.md.")
+    except Exception as e:
+        print(f"Failed to log tweet: {e}")
 
 # === SECTION 6: Main Execution ===
 if __name__ == "__main__":
