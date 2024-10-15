@@ -13,7 +13,7 @@ load_dotenv()
 
 # Configuration Variables
 USER_ALIAS = os.getenv("USER_ALIAS")
-CHANNEL_ID_REGEX = os.getenv("CHANNEL_ID_REGEX", r'\[(\d+)\]')
+CHANNEL_ID_REGEX = os.getenv("CHANNEL_ID_REGEX", r'(\d{18})')
 
 # Parse the input directory or file argument
 parser = argparse.ArgumentParser(description="Sanitize chat logs")
@@ -51,9 +51,12 @@ else:
 # Function to sanitize the message content
 def sanitize_message(message_text, author):
     sanitized_text = re.sub(fr"{author} BOT", "", message_text, flags=re.IGNORECASE).strip()
+    sanitized_text = re.sub(r'\(edited\)', '', sanitized_text).strip()  # Remove '(edited)'
+    sanitized_text = re.sub(r'\(re\s*:[^)]+\)', '', sanitized_text).strip()  # Remove '(re: ...)'
     sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip()
     sanitized_text = re.sub(r'\d+/\d+/\d+\s\d+:\d+\s[APM]{2}', '', sanitized_text)
     return sanitized_text if sanitized_text else "[No meaningful content]"
+
 
 # Function to extract the first @username from a forwarded message if the author is missing
 def extract_username_from_message(message_text):
@@ -78,10 +81,9 @@ def extract_minimal_messages(chat_log, channel_name):
     messages = soup.find_all('div', {'data-message-id': True})
     sanitized_messages = []
     last_user, previous_timestamp = None, None
-    channel_id_match = re.search(CHANNEL_ID_REGEX, channel_name)
+    channel_id_match = re.search(CHANNEL_ID_REGEX, chat_log)
     channel_id = channel_id_match.group(1) if channel_id_match else "Unknown_Channel_ID"
-    channel_name_clean = re.sub(CHANNEL_ID_REGEX, '', channel_name).strip()
-    channel_name_clean = re.sub(r'\[.*?\]', '', channel_name_clean).strip()
+    channel_name_clean = re.sub(r'-\d{18}', '', channel_name).strip()
     
     for message in messages:
         message_id = message['data-message-id']
@@ -93,26 +95,22 @@ def extract_minimal_messages(chat_log, channel_name):
         timestamp = timestamp_tag.get_text().strip() if timestamp_tag else (previous_timestamp or extract_timestamp_from_message_text(message_text))
         previous_timestamp = timestamp
         sanitized_message = sanitize_message(message_text, user)
-        if sanitized_message != '[No content]' and user.lower() != 'captain hook':
+        if sanitized_message not in ['[No content]', '[No meaningful content]'] and user.lower() != 'captain hook':
             sanitized_messages.append([user, sanitized_message, message_id, channel_id, channel_name_clean, timestamp])
+
     return sanitized_messages
 
 sanitized_messages = []
 regional_messages = []
-regional_channels = [
-    '🇷🇺│russkiye', '🇮🇹│italiana', '🇮🇩│indonesian', '🇻🇳┃vietnam', '🇪🇸│espanol', '🇪🇸│espanol-mining',
-    '🌍│regional-channels', '🔊│regional-outreach', '🇦🇪│arabic', '🇦🇺│australia', '🇦🇱│balkans', '🇨🇦│canada', '🇧🇪│belgium',
-    '🇨🇭│chinese', '🇩🇰│denmark', '🇩🇪│deutsch', '🇫🇷│francais', '🇮🇳│india', '🇮🇪│ireland', '🇬🇧│uk', '🇺🇸│usa', '🇯🇵│日本語', '🇱🇻│latvia', '🇹🇷│türk',
-    '🇰🇷│한국어', '🇬🇷│ελληνικά', '🇲🇽│mexico', '🇳🇱│nederlands', '🇮🇱│עברית', '🇵🇱│polskie', '🇵🇰│pakistan', '🇵🇭│pilipino', '🇵🇹│português',
-    '🇷🇴│romania', '🇸🇪│svenska', '🇸🇰│slovakia', '🇸🇮│slovenia', '🇦🇲│armenian'
-]
+regional_channels = os.getenv('REGIONAL_CHANNELS', '').split(',')
 
 for html_file in list_of_files:
     print(f"Processing file: {html_file}")
     with open(html_file, 'r', encoding='utf-8') as file:
         chat_log = file.read()
-        channel_name_match = re.search(r'- (.*?) \[', html_file) or re.search(r'/([^/]+)\.html$', html_file)
-        channel_name = channel_name_match.group(1).strip() if channel_name_match else os.path.splitext(os.path.basename(html_file))[0]
+        channel_name_match = re.search(r'- (.*?) \[', html_file) or re.search(r'/([^/]+?)(?:--.*)?\.html$', html_file)
+        channel_name = re.sub(r'-\d+.*$', '', channel_name_match.group(1)).strip() if channel_name_match else os.path.splitext(os.path.basename(html_file))[0]
+
         messages = extract_minimal_messages(chat_log, channel_name)
         print(f"Found {len(messages)} messages in {html_file}.")
         for msg in messages:
@@ -128,23 +126,17 @@ REGIONAL_OUTPUT_FILE = os.path.join(output_directory, 'regional_cleaned.csv')
 with open(SANITIZED_OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f_out:
     writer = csv.writer(f_out)
     writer.writerow(['author', 'msg', 'msg_id', 'channel_id', 'channel_name', 'timestamp'])
-    excluded_channels = [
-        'ergonauts', 'tabbypos', 'off-topic', 'moderators', 'foundation', 'treasurer', 'kushti', 
-        'peperg', 'sig-mining', '🔞│random', 'cyberverse', '❓│support', '🐣│sig-chat',
-        'mew-finance', 'greasycex', 'rosen', 'comet', 'spectrum', 'bober', 'ergone', 'ergopad', 'paideia', 'gluon-gold',
-        'rosen-port', 'thz-fm', 'blobs-topia', 'dexyusd-core', 'duckpools', 'ergo-ai', 'ergobass', 
-        'regional', 'announcements', 'bridge-tester'
-    ]
+    excluded_channels = os.getenv('EXCLUDED_CHANNELS', '').split(',')
     filtered_messages = [
         msg for msg in sanitized_messages
         if len(msg[1]) > 5 and msg[4].lower() != 'bridge-tester' and msg[0].lower() != 'chat_summary'
         and 'Forwarded from' not in msg[1] and msg[1] != '[No meaningful content]' and len(msg[1]) >= 10
-        and msg[4].lower() not in [channel.lower() for channel in excluded_channels]
+        and msg[4].lower() not in [channel.strip().lower() for channel in excluded_channels]
         and 'ifttt' not in msg[1].lower() and 'ifttt' not in msg[0].lower()
         and 'chat summariser' not in msg[1].lower() and 'chat summariser' not in msg[0].lower()
     ]
     forwarded_count = sum(1 for msg in sanitized_messages if 'Forwarded from' in msg[1])
-    excluded_channels_count = sum(1 for msg in sanitized_messages if msg[4].lower() in [channel.lower() for channel in excluded_channels])
+    excluded_channels_count = sum(1 for msg in sanitized_messages if msg[4].lower() in [channel.strip().lower() for channel in excluded_channels])
     total_dropped = len(sanitized_messages) - len(filtered_messages)
     print(f"Number of messages containing 'Forwarded from': {forwarded_count}")
     print(f"Number of messages from excluded channels: {excluded_channels_count}")
