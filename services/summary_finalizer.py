@@ -82,6 +82,45 @@ class SummaryFinalizer:
             self.logger.error(f"Error creating final summary: {str(e)}", exc_info=True)
             return None, None
 
+    def format_for_twitter(self, summary: str) -> str:
+        """Format the summary to be Twitter-friendly by removing all URLs and formatting."""
+        try:
+            formatted_lines = []
+            for line in summary.split('\n'):
+                if not line.strip():
+                    continue
+
+                # Keep section headers as is
+                if line.startswith('#'):
+                    formatted_lines.append(line)
+                    continue
+
+                # Process bullet points
+                if line.startswith('-'):
+                    # Remove bold formatting but keep project names
+                    line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
+                    
+                    # Remove all URLs including Discord ones
+                    line = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
+                    line = re.sub(r'\(https://discord\.com/channels/[^)]+\)', '', line)
+                    
+                    # Clean up any double spaces and add the line
+                    formatted_lines.append(re.sub(r'\s+', ' ', line).strip())
+                else:
+                    # Keep other content (if any) as is
+                    formatted_lines.append(line)
+
+            formatted_summary = '\n'.join(formatted_lines).strip()
+            
+            # Remove the Discord invite link if present
+            formatted_summary = re.sub(r'\nJoin the discussion on Discord: https://discord\.gg/[^\s]+', '', formatted_summary)
+            
+            return formatted_summary
+
+        except Exception as e:
+            self.logger.error(f"Error formatting summary for Twitter: {str(e)}", exc_info=True)
+            return summary
+
     def _remove_duplicate_bullets(self, bullets: List[str]) -> List[str]:
         """Remove duplicate bullets while preserving the most detailed version."""
         seen_content = {}
