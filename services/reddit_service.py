@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from services.base_service import BaseService
-import logging
 
 class RedditService(BaseService):
     def __init__(self):
@@ -53,6 +52,7 @@ class RedditService(BaseService):
                 self.logger.info("Username filled")
                 
                 # Password field with debugging
+                # trunk-ignore(bandit/B105)
                 password_selector = 'input[name="password"][type="password"]'
                 self.logger.info(f"Looking for password field with selector: {password_selector}")
                 password_input = page.locator(password_selector)

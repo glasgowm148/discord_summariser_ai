@@ -9,12 +9,17 @@ OUTPUT_DIR="./output"
 #EXPORTER="DiscordChatExporter/DiscordChatExporter.Cli"
 EXPORTER="DiscordChatExporter/DiscordChatExporter-linux/mac/DiscordChatExporter.Cli.osx-arm64/DiscordChatExporter.Cli"
 
-DEFAULT_RANGE="1d"
+# Prompt user for time range in days
+read -r -p "Enter the time range in days (e.g., 1 for 1 day, 7 for 7 days): " VALUE
 
-# Use default time range of 1d
-TIME_RANGE="${DEFAULT_RANGE}"
+# Validate input
+if ! [[ "${VALUE}" =~ ^[0-9]+$ ]]; then
+    echo "Invalid input. Please enter a numeric value for days."
+    exit 1
+fi
+
 UNIT="d"
-VALUE="1"
+TIME_RANGE="${VALUE}${UNIT}"
 
 # Calculate date range
 AFTER_DATE=$(date -u -v-"${VALUE}"d '+%Y-%m-%d %H:%M:%S' 2>/dev/null)

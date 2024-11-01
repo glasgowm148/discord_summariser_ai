@@ -3,10 +3,13 @@ import re
 from typing import List
 from openai import OpenAI
 from dataclasses import dataclass, field
+from pathlib import Path
+from datetime import datetime
 
 from config.settings import (
     MAX_RETRIES,
-    MIN_BULLETS_PER_CHUNK
+    MIN_BULLETS_PER_CHUNK,
+    OUTPUT_DIR
 )
 from services.base_service import BaseService
 from utils.prompts import SummaryPrompts
@@ -69,7 +72,9 @@ class BulletProcessor(BaseService):
         self.logger.info(f"Bullet Generation Complete - Total Valid Bullets: {self.total_bullets}")
         self.logger.info("="*80 + "\n")
 
-        return self._post_process_bullets(collected_bullets)
+        final_bullets = self._post_process_bullets(collected_bullets)
+        self._save_bullets(final_bullets)
+        return final_bullets
 
     def _optimize_chunk_size(self, chunk: str) -> str:
         """Optimize chunk size for GPT-4 processing."""
@@ -267,3 +272,23 @@ class BulletProcessor(BaseService):
         self.logger.info("="*80 + "\n")
         
         return final_bullets
+
+    def _save_bullets(self, bullets: List[str]) -> None:
+        """Save bullet points to output/bullets.md."""
+        try:
+            # Ensure output directory exists
+            output_dir = Path(OUTPUT_DIR)
+            output_dir.mkdir(exist_ok=True)
+            
+            bullets_file = output_dir / 'bullets.md'
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            bullet_content = "\n".join(bullets)
+            content = f"\n## Bullet Points {current_date}\n\n{bullet_content}\n"
+            
+            # Append to bullets.md
+            with open(bullets_file, 'a') as f:
+                f.write(content)
+            
+            self.logger.info("Saved bullet points to output/bullets.md")
+        except Exception as e:
+            self.handle_error(e, {"context": "Saving to bullets.md"})

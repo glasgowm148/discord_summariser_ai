@@ -1,4 +1,4 @@
-# services/summary_finalizer.py
+"""Finalize and format summaries for different platforms."""
 import logging
 import os
 import re
@@ -9,12 +9,22 @@ from typing import List, Optional, Tuple
 from openai import OpenAI
 
 from utils.prompts import SummaryPrompts
+from services.base_service import BaseService
 
 
-class SummaryFinalizer:
+class SummaryFinalizer(BaseService):
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
-        self.logger = logging.getLogger(__name__)
+        super().__init__()
+        self.api_key = api_key
+        self.initialize()
+
+    def initialize(self) -> None:
+        """Initialize OpenAI client."""
+        try:
+            self.client = OpenAI(api_key=self.api_key)
+        except Exception as e:
+            self.handle_error(e, {"context": "OpenAI client initialization"})
+            raise
 
     def create_final_summary(
         self, bullets: List[str], days_covered: int
@@ -33,10 +43,18 @@ class SummaryFinalizer:
             # Create Reddit summary (detailed version)
             reddit_summary = self._create_reddit_summary(original_bullets, days_covered)
 
+            # Save summaries to output/sent_summaries.md
+            if discord_summary:
+                self._save_to_sent_summaries("Discord", discord_summary)
+            if discord_summary_with_cta:
+                self._save_to_sent_summaries("Discord with CTA", discord_summary_with_cta)
+            if reddit_summary:
+                self._save_to_sent_summaries("Reddit", reddit_summary)
+
             return discord_summary, discord_summary_with_cta, reddit_summary
 
         except Exception as e:
-            self.logger.error(f"Error creating summaries: {str(e)}", exc_info=True)
+            self.handle_error(e, {"context": "Creating summaries"})
             return None, None, None
 
     def _create_discord_summary(
@@ -60,9 +78,7 @@ class SummaryFinalizer:
                     max_tokens=2000,
                 )
 
-                summary_content = final_response.model_dump()["choices"][0]["message"][
-                    "content"
-                ]
+                summary_content = final_response.choices[0].message.content
 
                 if not any(
                     line.strip().startswith("-") for line in summary_content.split("\n")
@@ -99,7 +115,7 @@ class SummaryFinalizer:
                 max_tokens=4000,
             )
 
-            reddit_content = response.model_dump()["choices"][0]["message"]["content"]
+            reddit_content = response.choices[0].message.content
             # Validate and clean the Reddit content
             if not any(
                 line.strip().startswith("#") for line in reddit_content.split("\n")
@@ -109,7 +125,7 @@ class SummaryFinalizer:
             return cleaned_content
 
         except Exception as e:
-            self.logger.error(f"Error creating Reddit summary: {str(e)}", exc_info=True)
+            self.handle_error(e, {"context": "Creating Reddit summary"})
             return None
 
     def _clean_reddit_content(self, content: str) -> str:
@@ -181,9 +197,7 @@ class SummaryFinalizer:
             return formatted_summary
 
         except Exception as e:
-            self.logger.error(
-                f"Error formatting summary for Twitter: {str(e)}", exc_info=True
-            )
+            self.handle_error(e, {"context": "Formatting for Twitter"})
             return summary
 
     def _remove_duplicate_bullets(self, bullets: List[str]) -> List[str]:
@@ -233,18 +247,25 @@ class SummaryFinalizer:
 
         return cleaned_summary
 
-    def _log_summary(self, summary: str) -> None:
-        """Log the generated summary."""
-        log_file = Path("sent_summaries.md")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    def _save_to_sent_summaries(self, format_type: str, content: str) -> None:
+        """Save formatted summary to output/sent_summaries.md."""
         try:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(f"\n# {timestamp}\n{summary}\n{'#' * 80}\n")
+            # Ensure output directory exists
+            output_dir = Path("output")
+            output_dir.mkdir(exist_ok=True)
+            
+            summaries_file = output_dir / 'sent_summaries.md'
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            formatted_content = f"\n## {format_type} Summary {current_date}\n\n{content}\n"
+            
+            # Append to sent_summaries.md
+            with open(summaries_file, 'a') as f:
+                f.write(formatted_content)
+            
+            self.logger.info(f"Saved {format_type} summary to output/sent_summaries.md")
         except Exception as e:
-            self.logger.error(f"Failed to log summary: {e}")
+            self.handle_error(e, {"context": f"Saving {format_type} summary"})
 
     def _add_call_to_action(self, summary: str) -> str:
         """Add call to action to the summary."""
-        discord_invite = os.getenv("DISCORD_INVITE_LINK", "https://discord.gg/ergo")
-        return f"{summary}\n\nJoin the discussion on Discord: {discord_invite}"
+        return f"{summary}\n\nJoin the discussion on Discord: https://discord.gg/ergo-platform-668903786361651200"

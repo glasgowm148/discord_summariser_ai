@@ -1,8 +1,11 @@
 """Main entry point for Discord chat summarization."""
 import os
+import sys
+from datetime import datetime
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 from services.reddit_service import RedditService
+from pathlib import Path
 
 from config.settings import (
     CONFIG_DIR,
@@ -71,11 +74,45 @@ class ChatSummariser(BaseService):
             self.handle_error(e, {"context": "Service initialization"})
             raise
 
+    def get_latest_summary(self) -> Optional[str]:
+        """Get the latest summary from output/sent_summaries.md."""
+        try:
+            summaries_file = Path(OUTPUT_DIR) / 'sent_summaries.md'
+            if summaries_file.exists():
+                content = summaries_file.read_text().strip()
+                if content:
+                    # Split by markdown headers and get all entries
+                    summaries = content.split('\n## ')
+                    if len(summaries) > 1:
+                        # Filter for Discord summaries and get the latest one
+                        discord_summaries = [s for s in summaries if 'Discord Summary' in s.split('\n')[0]]
+                        if discord_summaries:
+                            latest = '## ' + discord_summaries[-1]
+                            # Extract the actual summary content (remove the header)
+                            summary_lines = latest.split('\n')[2:]  # Skip header and empty line
+                            return '\n'.join(summary_lines)
+        except Exception as e:
+            self.handle_error(e, {"context": "Reading latest summary"})
+        return None
+
     def run(self) -> None:
         """Execute the main summarization process."""
         self.logger.info("Starting execution...")
 
         try:
+            # Check for latest summary
+            latest_summary = self.get_latest_summary()
+            if latest_summary:
+                print("\nLatest summary found:")
+                print("-" * 50)
+                print(latest_summary)
+                print("-" * 50)
+                choice = input("\nWould you like to use this summary instead of generating a new one? (y/n): ").lower()
+                if choice == 'y':
+                    print("\nUsing existing summary. Done!")
+                    return
+
+            print("\nGenerating new summary...")
             summary_result = self._generate_summary()
             if not summary_result:
                 self.logger.error("Summary generation failed")
@@ -161,7 +198,6 @@ class ChatSummariser(BaseService):
                     self.logger.error("Failed to post to Reddit")
         except Exception as e:
             self.handle_error(e, {"context": "Reddit posting"})
-
 
     def _prompt_twitter_post(self, summary_with_call_to_action: str) -> None:
         """Prompt user for Twitter posting."""
