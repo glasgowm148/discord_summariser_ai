@@ -162,3 +162,6 @@ scripts/DiscordChatExporter/*
 config/.env
 DiscordChatExporter/*
 output/*
+sent_summaries.md
+sent_summaries.md
+sent_summaries.md

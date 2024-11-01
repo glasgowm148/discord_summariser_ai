@@ -11,6 +11,8 @@ class BulletProcessor:
         self.logger = logging.getLogger(__name__)
         self.MAX_RETRIES = 7
         self.MIN_BULLETS_PER_CHUNK = 40
+        self.MAX_TOKENS = 8000  # Leave some buffer for the response
+        self.seen_projects = set()
         self.ACTION_VERBS = [
             "discussed", "shared", "announced", "implemented", "updated",
             "added", "fixed", "completed", "noted", "mentioned", "explained",
@@ -24,6 +26,7 @@ class BulletProcessor:
 
     def process_chunks(self, chunks: List[str]) -> List[str]:
         collected_bullets = []
+        self.seen_projects = set()  # Reset seen projects for new processing
         
         for i, chunk in enumerate(chunks):
             self.logger.info(f"\n{'='*50}")
@@ -31,9 +34,12 @@ class BulletProcessor:
             self.logger.info(f"{'='*50}")
             
             try:
-                chunk_bullets = self._process_single_chunk(chunk)
-                if chunk_bullets:  # Only extend if we got valid bullets
-                    collected_bullets.extend(chunk_bullets)
+                # Split chunk if it's too large
+                sub_chunks = self._split_chunk_by_tokens(chunk)
+                for sub_chunk in sub_chunks:
+                    chunk_bullets = self._process_single_chunk(sub_chunk)
+                    if chunk_bullets:  # Only extend if we got valid bullets
+                        collected_bullets.extend(chunk_bullets)
             except Exception as e:
                 self.logger.error(f"Error processing chunk {i+1}: {e}", exc_info=True)
                 continue  # Continue with next chunk even if this one fails
@@ -43,7 +49,40 @@ class BulletProcessor:
         if not collected_bullets:
             raise ValueError("No valid bullets were generated from any chunks")
             
+        # Post-process bullets to merge related project updates and ensure proper categorization
+        collected_bullets = self._post_process_bullets(collected_bullets)
+            
         return collected_bullets
+
+    def _split_chunk_by_tokens(self, chunk: str) -> List[str]:
+        """Split a chunk into smaller pieces if it exceeds token limit."""
+        # Rough estimation: 1 token ≈ 4 characters
+        char_limit = self.MAX_TOKENS * 4
+        
+        if len(chunk) <= char_limit:
+            return [chunk]
+            
+        # Split by newlines first to maintain message integrity
+        lines = chunk.split('\n')
+        current_chunk = []
+        chunks = []
+        current_length = 0
+        
+        for line in lines:
+            line_length = len(line) + 1  # +1 for newline
+            if current_length + line_length > char_limit:
+                if current_chunk:  # Save current chunk if it exists
+                    chunks.append('\n'.join(current_chunk))
+                current_chunk = [line]
+                current_length = line_length
+            else:
+                current_chunk.append(line)
+                current_length += line_length
+                
+        if current_chunk:  # Add the last chunk
+            chunks.append('\n'.join(current_chunk))
+            
+        return chunks
 
     def _process_single_chunk(self, chunk: str) -> List[str]:
         chunk_bullets = []
@@ -68,7 +107,7 @@ class BulletProcessor:
                     
                 valid_new_bullets = [
                     bullet for bullet in new_bullets
-                    if self._is_valid_bullet(bullet) and bullet not in chunk_bullets
+                    if self._is_valid_bullet(bullet)
                 ]
                 
                 print(f"\nValid new bullets: {len(valid_new_bullets)}/{len(new_bullets)}")
@@ -112,7 +151,8 @@ class BulletProcessor:
                 max_tokens=2000
             )
             
-            summary = response.model_dump()["choices"][0]["message"]["content"]
+            # Access the content directly from the response
+            summary = response.choices[0].message.content
             bullets = [b.strip() for b in summary.split('\n') if b.strip().startswith('-')]
             
             if not bullets:
@@ -137,6 +177,15 @@ class BulletProcessor:
         # Should have some technical content (minimum length)
         if len(bullet.strip()) <= 50:
             return False
+
+        # Extract project name if present
+        project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
+        if project_match:
+            project_name = project_match.group(1).strip()
+            # Skip if we've seen this project before
+            if project_name in self.seen_projects:
+                return False
+            self.seen_projects.add(project_name)
 
         return True
 
@@ -163,4 +212,47 @@ class BulletProcessor:
         else:
             result.append(f"❌ Too short: {length} chars")
 
+        # Check for project duplication
+        project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
+        if project_match:
+            project_name = project_match.group(1).strip()
+            if project_name in self.seen_projects:
+                result.append("❌ Duplicate project")
+            else:
+                result.append("✓ New project")
+
         return ' | '.join(result)
+
+    def _post_process_bullets(self, bullets: List[str]) -> List[str]:
+        """Post-process bullets to merge related updates and ensure proper categorization."""
+        # Group bullets by project
+        project_bullets = {}
+        other_bullets = []
+        
+        for bullet in bullets:
+            project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
+            if project_match:
+                project_name = project_match.group(1).strip()
+                if project_name not in project_bullets:
+                    project_bullets[project_name] = bullet
+                else:
+                    # Merge information if it's not redundant
+                    existing_info = project_bullets[project_name]
+                    new_info = bullet[bullet.find(':')+1:].strip()
+                    if new_info not in existing_info:
+                        project_bullets[project_name] = f"{existing_info} {new_info}"
+            else:
+                other_bullets.append(bullet)
+        
+        # Combine processed bullets
+        processed_bullets = list(project_bullets.values()) + other_bullets
+        
+        # Ensure Core Features discussion is under Development Updates
+        processed_bullets = [
+            bullet.replace("### Insightful/Philosophical Community Discussions", "### Development Updates")
+            if "Core Features" in bullet
+            else bullet
+            for bullet in processed_bullets
+        ]
+        
+        return processed_bullets

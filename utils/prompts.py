@@ -1,4 +1,3 @@
-# utils/prompts.py
 from typing import List
 
 class SummaryPrompts:
@@ -62,11 +61,15 @@ class SummaryPrompts:
         
         Requirements:
         1. Maintain ALL technical details without summarizing away essential information.
-        2. Group related updates, preserving individual technical specifics within each group.
+        2. Group related updates by consolidating multiple updates about the same project into single, comprehensive bullet points:
+           - Combine related information from the same project/topic into one detailed entry
+           - Include all relevant links within the consolidated entry
+           - Ensure the combined entry captures all unique technical details without redundancy
+           - Example: Multiple Satergo updates about the same feature should be combined into one detailed bullet point
         3. Keep Discord links precisely as they appear in the input.
         4. Choose suitable emojis based on the update type.
         5. Prioritize clarity and accuracy for each technical detail.
-        6. Include a bullet point for each project mentioned in the input, even if multiple updates for one project exist.
+        6. Avoid creating separate entries for updates that are part of the same development effort.
         
         Input bullets:
         {bullets}
