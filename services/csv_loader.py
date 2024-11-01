@@ -3,7 +3,6 @@ import os
 import glob
 import pandas as pd
 from typing import Tuple
-from datetime import datetime
 from services.base_service import BaseService
 
 class CsvLoaderService(BaseService):
@@ -68,7 +67,7 @@ class CsvLoaderService(BaseService):
             
         except Exception as e:
             self.handle_error(e, {"filepath": filepath})
-            raise ValueError(f"Error parsing days from filename: {e}")
+            raise ValueError(f"Error parsing days from filename: {e}") from e
 
     def get_days_covered(self) -> int:
         """Get the number of days covered by the loaded CSV."""

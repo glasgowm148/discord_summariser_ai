@@ -1,8 +1,5 @@
 """Main entry point for Discord chat summarization."""
-import sys
-import subprocess
 import os
-from pathlib import Path
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 

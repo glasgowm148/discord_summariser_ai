@@ -1,7 +1,6 @@
 # services/twitter_service.py
 import os
 from pathlib import Path
-from typing import Dict
 import requests
 from requests_oauthlib import OAuth1
 from dotenv import load_dotenv
@@ -43,7 +42,7 @@ class TwitterService:
         
         print("Sending tweet...")
         try:
-            response = requests.post(self.api_url, auth=self.auth, json=payload)
+            response = requests.post(self.api_url, auth=self.auth, json=payload, timeout=10)  # Added timeout
             if response.status_code in (200, 201):
                 print("Tweet sent successfully.")
             else:

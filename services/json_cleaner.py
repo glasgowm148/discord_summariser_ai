@@ -175,7 +175,7 @@ class JsonCleanerService:
         author_counter = Counter(authors)
         channel_counter = Counter(channel_names)
         
-        print(f"\n--- Stats ---")
+        print("\n--- Stats ---")
         print(f"Total messages: {total_messages}")
         print(f"Number of unique authors: {len(author_counter)}")
         print("Top 5 most active authors:")

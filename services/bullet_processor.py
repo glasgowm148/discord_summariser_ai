@@ -1,14 +1,12 @@
 """Process chunks of text into bullet points."""
 import re
-from typing import List, Set
+from typing import List
 from openai import OpenAI
 from dataclasses import dataclass, field
 
 from config.settings import (
-    MAX_TOKENS,
     MAX_RETRIES,
-    MIN_BULLETS_PER_CHUNK,
-    ACTION_VERBS
+    MIN_BULLETS_PER_CHUNK
 )
 from services.base_service import BaseService
 from utils.prompts import SummaryPrompts
@@ -141,7 +139,7 @@ class BulletProcessor(BaseService):
                 })
                 retry_count += 1
                 if retry_count >= MAX_RETRIES and not chunk_bullets:
-                    raise ValueError(f"Failed to generate valid bullets after {MAX_RETRIES} attempts")
+                    raise ValueError(f"Failed to generate valid bullets after {MAX_RETRIES} attempts") from None
         
         return chunk_bullets
 
@@ -242,7 +240,7 @@ class BulletProcessor(BaseService):
                 other_bullets.append(bullet)
 
         # Log project statistics
-        self.logger.info(f"\n📊 Project Statistics:")
+        self.logger.info("\n📊 Project Statistics:")
         self.logger.info(f"   Projects found: {len(project_bullets)}")
         self.logger.info(f"   Other bullets: {len(other_bullets)}")
         

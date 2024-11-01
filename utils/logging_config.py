@@ -1,6 +1,5 @@
 # utils/logging_config.py
 import logging
-from pathlib import Path
 
 def setup_logging():
     logging.basicConfig(

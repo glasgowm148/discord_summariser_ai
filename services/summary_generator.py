@@ -1,5 +1,4 @@
 # services/summary_generator.py
-import os
 import pandas as pd
 from typing import Tuple, Optional, List
 
@@ -93,10 +92,10 @@ class SummaryGenerator:
                 self.logger.warning(f"Error converting row {idx} to DiscordMessage: {e}")
                 errors += 1
                 if errors > len(df) * 0.5:  # If more than 50% of rows fail
-                    raise ValueError("Too many errors converting DataFrame rows to messages")
+                    raise ValueError("Too many errors converting DataFrame rows to messages") from e
                 continue
                 
         if not messages:
-            raise ValueError("No valid messages could be created from DataFrame")
+            raise ValueError("No valid messages could be created from DataFrame") from None
             
         return messages

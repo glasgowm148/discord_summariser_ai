@@ -1,12 +1,15 @@
 # services/summary_finalizer.py
+import logging
 import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Optional, List
-import logging
+from typing import List, Optional, Tuple
+
 from openai import OpenAI
+
 from utils.prompts import SummaryPrompts
+
 
 class SummaryFinalizer:
     def __init__(self, api_key: str):
@@ -90,8 +93,9 @@ class SummaryFinalizer:
                 if not line.strip():
                     continue
 
-                # Keep section headers as is
+                # Remove section headers formatting
                 if line.startswith('#'):
+                    line = line.lstrip('#').strip()
                     formatted_lines.append(line)
                     continue
 
@@ -124,7 +128,6 @@ class SummaryFinalizer:
     def _remove_duplicate_bullets(self, bullets: List[str]) -> List[str]:
         """Remove duplicate bullets while preserving the most detailed version."""
         seen_content = {}
-        unique_bullets = []
         
         for bullet in bullets:
             # Extract core content without emoji and formatting

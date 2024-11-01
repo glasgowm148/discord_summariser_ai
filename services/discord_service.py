@@ -3,7 +3,7 @@ import os
 import openai
 import requests
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 from dotenv import load_dotenv
 
 class DiscordService:

@@ -4,7 +4,7 @@ A Python application that summarizes Discord chat conversations using OpenAI's G
 
 ## Project Structure
 
-```
+```bash
 discord_summariser_ai/
 ├── config/
 │   ├── .env.example
@@ -68,7 +68,7 @@ cp config/.env.example config/.env
 ```
 
 5. Edit `config/.env` with your API keys and settings:
-```
+```bash
 OPENAI_API_KEY=your_openai_api_key
 TWITTER_CONSUMER_KEY=your_twitter_consumer_key
 TWITTER_CONSUMER_SECRET=your_twitter_consumer_secret
