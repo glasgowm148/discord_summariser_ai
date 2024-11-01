@@ -124,4 +124,4 @@ The application includes comprehensive error handling:
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is distributed under a custom non-commercial license. Unauthorized commercial use is prohibited. For commercial inquiries or permissions, please contact us in writing.
