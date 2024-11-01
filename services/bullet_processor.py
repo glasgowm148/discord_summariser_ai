@@ -1,144 +1,153 @@
-# services/bullet_processor.py
+"""Process chunks of text into bullet points."""
 import re
-import logging
+from typing import List, Set
 from openai import OpenAI
-from typing import List
+from dataclasses import dataclass, field
+
+from config.settings import (
+    MAX_TOKENS,
+    MAX_RETRIES,
+    MIN_BULLETS_PER_CHUNK,
+    ACTION_VERBS
+)
+from services.base_service import BaseService
 from utils.prompts import SummaryPrompts
 
-class BulletProcessor:
+@dataclass
+class BulletPoint:
+    """Represents a processed bullet point."""
+    content: str
+    project_name: str = ""
+    discord_link: str = ""
+    is_valid: bool = False
+    validation_messages: List[str] = field(default_factory=list)
+
+class BulletProcessor(BaseService):
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
-        self.logger = logging.getLogger(__name__)
-        self.MAX_RETRIES = 7
-        self.MIN_BULLETS_PER_CHUNK = 40
-        self.MAX_TOKENS = 8000  # Leave some buffer for the response
-        self.seen_projects = set()
-        self.ACTION_VERBS = [
-            "discussed", "shared", "announced", "implemented", "updated",
-            "added", "fixed", "completed", "noted", "mentioned", "explained",
-            "developed", "created", "built", "launched", "deployed", "merged",
-            "tested", "configured", "optimized", "refactored", "designed",
-            "integrated", "released", "improved", "started", "proposed",
-            "initiated", "showcased", "demonstrated", "published", "documented",
-            "analyzed", "evaluated", "reviewed", "submitted", "prepared",
-            "enabled", "established", "introduced", "suggested", "recommended"
-        ]
+        super().__init__()
+        self.api_key = api_key
+        self.total_bullets = 0
+        self.initialize()
+
+    def initialize(self) -> None:
+        """Initialize OpenAI client."""
+        try:
+            self.client = OpenAI(api_key=self.api_key)
+        except Exception as e:
+            self.handle_error(e, {"context": "OpenAI client initialization"})
+            raise
 
     def process_chunks(self, chunks: List[str]) -> List[str]:
+        """Process multiple chunks into bullet points."""
         collected_bullets = []
-        self.seen_projects = set()  # Reset seen projects for new processing
-        
-        for i, chunk in enumerate(chunks):
-            self.logger.info(f"\n{'='*50}")
-            self.logger.info(f"Processing chunk {i+1}/{len(chunks)}")
-            self.logger.info(f"{'='*50}")
+        self.total_bullets = 0
+
+        self.logger.info("\n" + "="*80)
+        self.logger.info(f"Starting bullet point generation for {len(chunks)} chunks")
+        self.logger.info("="*80)
+
+        for i, chunk in enumerate(chunks, 1):
+            self.logger.info(f"\n📝 Processing Chunk {i}/{len(chunks)}")
+            self.logger.info("-"*80)
             
             try:
-                # Split chunk if it's too large
-                sub_chunks = self._split_chunk_by_tokens(chunk)
-                for sub_chunk in sub_chunks:
-                    chunk_bullets = self._process_single_chunk(sub_chunk)
-                    if chunk_bullets:  # Only extend if we got valid bullets
-                        collected_bullets.extend(chunk_bullets)
+                processed_chunk = self._optimize_chunk_size(chunk)
+                chunk_bullets = self._process_single_chunk(processed_chunk, i)
+                if chunk_bullets:
+                    collected_bullets.extend(chunk_bullets)
+                    self.total_bullets = len(collected_bullets)
+                    self.logger.info(f"\n✅ Chunk {i} Complete")
+                    self.logger.info(f"   Bullets from this chunk: {len(chunk_bullets)}")
+                    self.logger.info(f"   Total bullets so far: {self.total_bullets}")
+                    self.logger.info("-"*80)
             except Exception as e:
-                self.logger.error(f"Error processing chunk {i+1}: {e}", exc_info=True)
-                continue  # Continue with next chunk even if this one fails
-            
-        self.logger.info(f"\nTotal bullets collected: {len(collected_bullets)}")
-        
+                self.handle_error(e, {"chunk_index": i})
+                continue
+
         if not collected_bullets:
             raise ValueError("No valid bullets were generated from any chunks")
-            
-        # Post-process bullets to merge related project updates and ensure proper categorization
-        collected_bullets = self._post_process_bullets(collected_bullets)
-            
-        return collected_bullets
 
-    def _split_chunk_by_tokens(self, chunk: str) -> List[str]:
-        """Split a chunk into smaller pieces if it exceeds token limit."""
-        # Rough estimation: 1 token ≈ 4 characters
-        char_limit = self.MAX_TOKENS * 4
-        
-        if len(chunk) <= char_limit:
-            return [chunk]
-            
-        # Split by newlines first to maintain message integrity
-        lines = chunk.split('\n')
-        current_chunk = []
-        chunks = []
-        current_length = 0
-        
-        for line in lines:
-            line_length = len(line) + 1  # +1 for newline
-            if current_length + line_length > char_limit:
-                if current_chunk:  # Save current chunk if it exists
-                    chunks.append('\n'.join(current_chunk))
-                current_chunk = [line]
-                current_length = line_length
-            else:
-                current_chunk.append(line)
-                current_length += line_length
-                
-        if current_chunk:  # Add the last chunk
-            chunks.append('\n'.join(current_chunk))
-            
-        return chunks
+        self.logger.info("\n" + "="*80)
+        self.logger.info(f"Bullet Generation Complete - Total Valid Bullets: {self.total_bullets}")
+        self.logger.info("="*80 + "\n")
 
-    def _process_single_chunk(self, chunk: str) -> List[str]:
+        return self._post_process_bullets(collected_bullets)
+
+    def _optimize_chunk_size(self, chunk: str) -> str:
+        """Optimize chunk size for GPT-4 processing."""
+        max_chars = 128000 * 4
+        
+        if len(chunk) <= max_chars:
+            return chunk
+            
+        messages = chunk.split("---\n")
+        optimized_messages = []
+        current_size = 0
+        
+        for msg in messages:
+            msg_size = len(msg) + 4
+            if current_size + msg_size > max_chars:
+                break
+            optimized_messages.append(msg)
+            current_size += msg_size
+            
+        return "---\n".join(optimized_messages) + "---\n"
+
+    def _process_single_chunk(self, chunk: str, chunk_num: int) -> List[str]:
+        """Process a single chunk into bullet points."""
         chunk_bullets = []
         retry_count = 0
-        consecutive_no_new = 0
         
-        while retry_count < self.MAX_RETRIES:
+        while retry_count < MAX_RETRIES and len(chunk_bullets) < MIN_BULLETS_PER_CHUNK:
             try:
-                print(f"\nAttempt {retry_count + 1}:")
-                print("-" * 30)
+                self.logger.info(f"\n🔄 Attempt {retry_count + 1} for Chunk {chunk_num}")
+                self.logger.info(f"   Current bullet count: {len(chunk_bullets)}/{MIN_BULLETS_PER_CHUNK} minimum")
+                self.logger.info("   " + "-"*40)
                 
                 new_bullets = self._extract_bullets_from_chunk(chunk, retry_count, len(chunk_bullets))
-                if not new_bullets:  # Validate we got bullets from the API
-                    raise ValueError("No bullets returned from API")
+                if not new_bullets:
+                    self.logger.warning("   ⚠️  No bullets returned from API")
+                    retry_count += 1
+                    continue
                     
-                print(f"\nFound {len(new_bullets)} raw bullets:")
-                for i, bullet in enumerate(new_bullets, 1):
-                    print(f"\nBullet {i}:")
-                    print(bullet)
-                    validation_result = self._validate_bullet_verbose(bullet)
-                    print(f"Validation: {validation_result}")
-                    
-                valid_new_bullets = [
-                    bullet for bullet in new_bullets
-                    if self._is_valid_bullet(bullet)
-                ]
+                self.logger.info(f"\n📋 Processing {len(new_bullets)} new bullets:")
+                valid_new_bullets = []
                 
-                print(f"\nValid new bullets: {len(valid_new_bullets)}/{len(new_bullets)}")
-                print("Valid bullets being added:")
-                for bullet in valid_new_bullets:
-                    print(f"✓ {bullet}")
+                for i, bullet_text in enumerate(new_bullets, 1):
+                    bullet = self._create_bullet_point(bullet_text)
+                    validation_result = self._validate_bullet_verbose(bullet)
+                    
+                    # Format bullet output
+                    self.logger.info(f"\n🔹 Bullet {i}:")
+                    self.logger.info(f"   {bullet_text}")
+                    self.logger.info(f"   Validation: {validation_result}")
+                    
+                    if bullet.is_valid:
+                        valid_new_bullets.append(bullet.content)
                 
                 if valid_new_bullets:
+                    self.logger.info(f"\n✨ Valid bullets this attempt: {len(valid_new_bullets)}/{len(new_bullets)}")
                     chunk_bullets.extend(valid_new_bullets)
-                    consecutive_no_new = 0
+                    self.logger.info(f"📊 Progress: {len(chunk_bullets)}/{MIN_BULLETS_PER_CHUNK} minimum bullets")
                 else:
-                    consecutive_no_new += 1
-                    print(f"No new valid bullets found in attempt {retry_count + 1}")
+                    self.logger.info("\n⚠️  No valid bullets in this attempt")
                 
-                if len(chunk_bullets) >= self.MIN_BULLETS_PER_CHUNK or consecutive_no_new >= 3:
-                    break
-                    
                 retry_count += 1
                 
             except Exception as e:
-                self.logger.error(f"Error in attempt {retry_count + 1}: {e}", exc_info=True)
+                self.handle_error(e, {
+                    "retry_count": retry_count,
+                    "current_bullets": len(chunk_bullets)
+                })
                 retry_count += 1
-                if retry_count >= self.MAX_RETRIES:
-                    if not chunk_bullets:  # If we have no bullets at all, raise the error
-                        raise ValueError(f"Failed to generate any valid bullets after {self.MAX_RETRIES} attempts")
-                    break  # Otherwise, return what we have
+                if retry_count >= MAX_RETRIES and not chunk_bullets:
+                    raise ValueError(f"Failed to generate valid bullets after {MAX_RETRIES} attempts")
         
         return chunk_bullets
 
     def _extract_bullets_from_chunk(self, chunk: str, retry_count: int, current_bullets: int) -> List[str]:
-        temperature = 0.7 + (retry_count * 0.05)
+        """Extract bullet points from chunk using OpenAI API."""
+        temperature = min(0.7 + (retry_count * 0.05), 0.95)
         
         try:
             response = self.client.chat.completions.create(
@@ -147,84 +156,76 @@ class BulletProcessor:
                     {"role": "system", "content": SummaryPrompts.get_system_prompt()},
                     {"role": "user", "content": SummaryPrompts.get_user_prompt(chunk, current_bullets)}
                 ],
-                temperature=min(temperature, 0.95),
+                temperature=temperature,
                 max_tokens=2000
             )
             
-            # Access the content directly from the response
             summary = response.choices[0].message.content
-            bullets = [b.strip() for b in summary.split('\n') if b.strip().startswith('-')]
-            
-            if not bullets:
-                raise ValueError("API response contained no bullet points")
-                
-            return bullets
+            return [b.strip() for b in summary.split('\n') if b.strip().startswith('-')]
             
         except Exception as e:
-            self.logger.error(f"Error in API call: {e}", exc_info=True)
+            self.handle_error(e, {"context": "OpenAI API call"})
             raise
 
-    def _is_valid_bullet(self, bullet: str) -> bool:
-        """Validate bullet point format focusing on essential requirements."""
-        if not bullet.strip().startswith('-'):
-            return False
+    def _create_bullet_point(self, text: str) -> BulletPoint:
+        """Create and validate a bullet point."""
+        bullet = BulletPoint(content=text)
+        
+        if not text.strip().startswith('-'):
+            bullet.validation_messages.append("Does not start with '-'")
+            return bullet
 
-        # Must have Discord link
-        has_discord_link = bool(re.search(r'\(https://discord\.com/channels/[^)]+\)', bullet))
-        if not has_discord_link:
-            return False
+        discord_match = re.search(r'\(https://discord\.com/channels/[^)]+\)', text)
+        if discord_match:
+            bullet.discord_link = discord_match.group(0)
+        else:
+            bullet.validation_messages.append("Missing Discord link")
+            return bullet
 
-        # Should have some technical content (minimum length)
-        if len(bullet.strip()) <= 50:
-            return False
+        if len(text.strip()) <= 50:
+            bullet.validation_messages.append("Too short")
+            return bullet
 
-        # Extract project name if present
-        project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
+        project_match = re.search(r'\*\*([^*]+)\*\*', text)
         if project_match:
-            project_name = project_match.group(1).strip()
-            # Skip if we've seen this project before
-            if project_name in self.seen_projects:
-                return False
-            self.seen_projects.add(project_name)
+            bullet.project_name = project_match.group(1).strip()
 
-        return True
+        bullet.is_valid = True
+        return bullet
 
-    def _validate_bullet_verbose(self, bullet: str) -> str:
-        """Validate bullet point and return detailed explanation."""
+    def _validate_bullet_verbose(self, bullet: BulletPoint) -> str:
+        """Return detailed validation results for logging."""
         result = []
         
-        # Basic structure check
-        if not bullet.strip().startswith('-'):
-            result.append("❌ Does not start with '-'")
+        if bullet.content.strip().startswith('-'):
+            result.append("✓ Format")
         else:
-            result.append("✓ Starts with '-'")
+            result.append("❌ Format")
 
-        # Check for Discord link
-        if re.search(r'\(https://discord\.com/channels/[^)]+\)', bullet):
-            result.append("✓ Has Discord link")
+        if bullet.discord_link:
+            result.append("✓ Link")
         else:
-            result.append("❌ Missing Discord link")
+            result.append("❌ Link")
 
-        # Check length
-        length = len(bullet.strip())
+        length = len(bullet.content.strip())
         if length > 50:
-            result.append(f"✓ Length ok: {length} chars")
+            result.append(f"✓ Length ({length})")
         else:
-            result.append(f"❌ Too short: {length} chars")
+            result.append(f"❌ Length ({length})")
 
-        # Check for project duplication
-        project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
-        if project_match:
-            project_name = project_match.group(1).strip()
-            if project_name in self.seen_projects:
-                result.append("❌ Duplicate project")
-            else:
-                result.append("✓ New project")
+        if bullet.project_name:
+            result.append(f"✓ Project: {bullet.project_name}")
+        else:
+            result.append("⚠️ No project")
 
         return ' | '.join(result)
 
     def _post_process_bullets(self, bullets: List[str]) -> List[str]:
-        """Post-process bullets to merge related updates and ensure proper categorization."""
+        """Post-process bullets to merge related updates."""
+        self.logger.info("\n" + "="*80)
+        self.logger.info("Post-processing Bullets")
+        self.logger.info("="*80)
+
         # Group bullets by project
         project_bullets = {}
         other_bullets = []
@@ -234,25 +235,37 @@ class BulletProcessor:
             if project_match:
                 project_name = project_match.group(1).strip()
                 if project_name not in project_bullets:
-                    project_bullets[project_name] = bullet
+                    project_bullets[project_name] = [bullet]
                 else:
-                    # Merge information if it's not redundant
-                    existing_info = project_bullets[project_name]
-                    new_info = bullet[bullet.find(':')+1:].strip()
-                    if new_info not in existing_info:
-                        project_bullets[project_name] = f"{existing_info} {new_info}"
+                    project_bullets[project_name].append(bullet)
             else:
                 other_bullets.append(bullet)
+
+        # Log project statistics
+        self.logger.info(f"\n📊 Project Statistics:")
+        self.logger.info(f"   Projects found: {len(project_bullets)}")
+        self.logger.info(f"   Other bullets: {len(other_bullets)}")
         
-        # Combine processed bullets
-        processed_bullets = list(project_bullets.values()) + other_bullets
+        for project, bullet_list in project_bullets.items():
+            self.logger.info(f"   - {project}: {len(bullet_list)} updates")
+
+        # Prepare final bullet list
+        processed_bullets = []
+        for project_bullet_list in project_bullets.values():
+            processed_bullets.extend(project_bullet_list)
+        processed_bullets.extend(other_bullets)
         
-        # Ensure Core Features discussion is under Development Updates
-        processed_bullets = [
-            bullet.replace("### Insightful/Philosophical Community Discussions", "### Development Updates")
-            if "Core Features" in bullet
-            else bullet
+        # Handle category replacement
+        final_bullets = [
+            bullet.replace(
+                "### Insightful/Philosophical Community Discussions",
+                "### Development Updates"
+            )
+            if "Core Features" in bullet else bullet
             for bullet in processed_bullets
         ]
+
+        self.logger.info(f"\n✅ Post-processing complete - Final bullet count: {len(final_bullets)}")
+        self.logger.info("="*80 + "\n")
         
-        return processed_bullets
+        return final_bullets

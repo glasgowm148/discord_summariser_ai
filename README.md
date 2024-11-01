@@ -1,61 +1,127 @@
-# Chat Summariser
+# Discord Chat Summarizer
 
-A tool to export, process, and summarize Discord chat messages with multi-language support and social media integration.
+A Python application that summarizes Discord chat conversations using OpenAI's GPT models. The summarizer processes chat exports, generates concise bullet-point summaries, and can distribute them to Discord and Twitter.
 
 ## Project Structure
 
 ```
-chat_summariser/
-├── config/                 # Configuration files
-│   ├── .env               # Environment variables (gitignored)
-│   └── .env.example       # Example environment file
-├── models/                # Data models
-│   └── discord_message.py # Discord message model
-├── output/                # Generated outputs
-├── scripts/               # Shell scripts
-│   └── export_chat.sh     # Discord chat export script
-├── services/             # Core services
-│   ├── csv_loader.py     # CSV file handling
-│   ├── discord_service.py # Discord integration
-│   ├── json_cleaner.py   # JSON processing
-│   ├── summary_generator.py # Summary generation
-│   └── twitter_service.py # Twitter integration
-├── utils/                # Utility functions
-│   ├── logging_config.py # Logging configuration
-│   └── prompts.py       # OpenAI prompts
-└── summarise.py         # Main application entry
+discord_summariser_ai/
+├── config/
+│   ├── .env.example
+│   ├── README.md
+│   └── settings.py
+├── models/
+│   └── discord_message.py
+├── services/
+│   ├── base_service.py
+│   ├── bullet_processor.py
+│   ├── chunk_processor.py
+│   ├── csv_loader.py
+│   ├── discord_service.py
+│   ├── json_cleaner.py
+│   ├── summary_finalizer.py
+│   ├── summary_generator.py
+│   └── twitter_service.py
+├── utils/
+│   ├── logging_config.py
+│   └── prompts.py
+├── scripts/
+│   └── export_chat.sh
+├── output/
+├── .gitignore
+├── README.md
+└── summarise.py
 ```
-
-## Setup
-
-1. Clone the repository
-2. Copy `config/.env.example` to `config/.env` and fill in your values
-3. Install dependencies: `pip install -r requirements.txt`
-
-## Usage
-
-1. Export chat messages:
-   ```bash
-   ./scripts/export_chat.sh 1d  # Export last day
-   ./scripts/export_chat.sh 1w  # Export last week
-   ```
-
-2. Generate summary:
-   ```bash
-   python summarise.py
-   ```
-
-The tool will:
-- Process the exported chat messages
-- Generate a summary using OpenAI
-- Post to Discord (with translations)
-- Optionally post to Twitter
 
 ## Features
 
-- Discord chat export and processing
-- Multi-language summaries (via OpenAI)
-- Discord webhook integration
-- Twitter integration
-- Configurable time ranges
-- Detailed logging
+- Processes Discord chat exports in CSV format
+- Generates concise, bullet-point summaries using OpenAI's GPT models
+- Supports both daily and weekly summaries
+- Posts summaries to Discord via webhooks
+- Optional Twitter integration for sharing summaries
+- Robust error handling and logging
+- Configurable settings and environment variables
+
+## Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/discord_summariser_ai.git
+cd discord_summariser_ai
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Set up environment variables:
+```bash
+cp config/.env.example config/.env
+```
+
+5. Edit `config/.env` with your API keys and settings:
+```
+OPENAI_API_KEY=your_openai_api_key
+TWITTER_CONSUMER_KEY=your_twitter_consumer_key
+TWITTER_CONSUMER_SECRET=your_twitter_consumer_secret
+TWITTER_ACCESS_TOKEN=your_twitter_access_token
+TWITTER_ACCESS_TOKEN_SECRET=your_twitter_access_token_secret
+DISCORD_WEBHOOK_URL=your_discord_webhook_url
+```
+
+## Usage
+
+1. Export Discord chat using the provided script:
+```bash
+./scripts/export_chat.sh
+```
+
+2. Run the summarizer:
+```bash
+python summarise.py
+```
+
+The script will:
+1. Load the latest chat export from the `output` directory
+2. Generate a summary using OpenAI's GPT models
+3. Post the summary to Discord
+4. Optionally post to Twitter if confirmed
+
+## Architecture
+
+The application follows a service-oriented architecture with clear separation of concerns:
+
+- **Base Service**: Provides common functionality for error handling and logging
+- **Services**: Individual components handle specific tasks (CSV loading, summary generation, etc.)
+- **Models**: Data structures for representing Discord messages and other entities
+- **Utils**: Helper functions and configuration
+- **Config**: Central location for settings and environment variables
+
+## Error Handling
+
+The application includes comprehensive error handling:
+- Validates environment variables and configurations
+- Handles API errors gracefully
+- Provides detailed logging
+- Implements retry mechanisms for API calls
+- Validates input data and generated content
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
