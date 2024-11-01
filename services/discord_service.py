@@ -26,7 +26,8 @@ class DiscordService:
             'German': os.getenv('DISCORD_WEBHOOK_URL_GERMAN'),
             'Vietnamese': os.getenv('DISCORD_WEBHOOK_URL_VIETNAMESE'),
             'Portuguese': os.getenv('DISCORD_WEBHOOK_URL_PORTUGUESE'),
-            'Arabic': os.getenv('DISCORD_WEBHOOK_URL_ARABIC')
+            'Arabic': os.getenv('DISCORD_WEBHOOK_URL_ARABIC'),
+            'tester': os.getenv('DISCORD_WEBHOOK_URL_TESTER')
         }
         self.language_map = {
             "Chinese": "Simplified Chinese",
@@ -61,6 +62,16 @@ class DiscordService:
                 processed_content = self._translate_content(content, language)
 
             self._send_chunks_to_webhook(processed_content, url, chunk_size, language)
+
+    def send_reddit_summary(self, content: str, chunk_size: int = 2000) -> None:
+        """Send the detailed Reddit summary to the tester webhook."""
+        if not self.webhook_urls.get('tester'):
+            print("Warning: Tester webhook URL not configured, skipping Reddit summary")
+            return
+
+        print("Sending detailed Reddit summary to tester webhook...")
+        formatted_content = "```markdown\n" + content + "\n```"
+        self._send_chunks_to_webhook(formatted_content, self.webhook_urls['tester'], chunk_size, "reddit")
 
     def send_daily_message(self, content: str, chunk_size: int = 2000) -> None:
         """Send message to default Discord webhook only (for daily updates)."""

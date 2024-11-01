@@ -2,6 +2,7 @@
 import os
 from typing import Optional, Tuple
 from dotenv import load_dotenv
+from services.reddit_service import RedditService
 
 from config.settings import (
     CONFIG_DIR,
@@ -65,6 +66,7 @@ class ChatSummariser(BaseService):
                 os.getenv("OPENAI_API_KEY"))
             self.discord_service = DiscordService()
             self.twitter_service = TwitterService()
+            self.reddit_service = RedditService()
         except Exception as e:
             self.handle_error(e, {"context": "Service initialization"})
             raise
@@ -79,40 +81,49 @@ class ChatSummariser(BaseService):
                 self.logger.error("Summary generation failed")
                 return
 
-            summary, summary_with_call_to_action = summary_result
-            self._send_to_platforms(summary, summary_with_call_to_action)
+            discord_summary, discord_summary_with_cta, reddit_summary = summary_result
+            self._send_to_platforms(discord_summary, discord_summary_with_cta, reddit_summary)
 
         except Exception as e:
             self.handle_error(e, {"context": "Main execution"})
             raise
 
-    def _generate_summary(self) -> Optional[Tuple[str, str]]:
+    def _generate_summary(self) -> Optional[Tuple[str, str, str]]:
         """Generate summary from latest CSV file."""
         try:
             df, _, _ = self.csv_loader.load_latest_csv(OUTPUT_DIR)
             days_covered = self.csv_loader.get_days_covered()
 
             self.logger.info("Generating summary...")
-            summary, summary_with_call_to_action = self.summary_generator.generate_summary(
+            summaries = self.summary_generator.generate_summary(
                 df, days_covered
             )
 
-            if not summary:
+            if not summaries:
                 self.logger.error("Summary generation failed")
                 return None
 
-            self.logger.info(f"Generated Summary:\n{summary}\n")
-            return summary, summary_with_call_to_action
+            discord_summary, discord_summary_with_cta, reddit_summary = summaries    
+            if not discord_summary or not discord_summary_with_cta or not reddit_summary:
+                self.logger.error("One or more summaries are missing")
+                return None
+
+            self.logger.info(f"Generated Discord Summary:\n{discord_summary}\n")
+            self.logger.info(f"Generated Reddit Summary:\n{reddit_summary}\n")
+            return discord_summary, discord_summary_with_cta, reddit_summary
 
         except Exception as e:
             self.handle_error(e, {"context": "Summary generation"})
             return None
 
-    def _send_to_platforms(self, summary: str, summary_with_call_to_action: str) -> None:
-        """Send summary to Discord and optionally Twitter."""
+    def _send_to_platforms(self, discord_summary: str, discord_summary_with_cta: str, reddit_summary: str) -> None:
+        """Send summaries to platforms."""
         try:
-            self._send_to_discord(summary)
-            self._prompt_twitter_post(summary_with_call_to_action)
+            self._send_to_discord(discord_summary)
+            if reddit_summary:
+                self.discord_service.send_reddit_summary(reddit_summary)
+                self._post_to_reddit(reddit_summary)
+            self._prompt_twitter_post(discord_summary_with_cta)
         except Exception as e:
             self.handle_error(e, {"context": "Platform distribution"})
 
@@ -136,6 +147,21 @@ class ChatSummariser(BaseService):
                 "context": "Discord message",
                 "summary_length": len(summary)
             })
+
+    def _post_to_reddit(self, reddit_summary: str) -> None:
+        """Post summary to Reddit if user confirms."""
+        try:
+            print("\nWould you like to post this summary to Reddit? (yes/no): ")
+            if input().strip().lower() == 'yes':
+                days = self.csv_loader.get_days_covered()
+                title = f"Ergo Development Update - {days} Day Roundup"
+                if self.reddit_service.post_to_reddit(title, reddit_summary):
+                    self.logger.info("Successfully posted to Reddit")
+                else:
+                    self.logger.error("Failed to post to Reddit")
+        except Exception as e:
+            self.handle_error(e, {"context": "Reddit posting"})
+
 
     def _prompt_twitter_post(self, summary_with_call_to_action: str) -> None:
         """Prompt user for Twitter posting."""

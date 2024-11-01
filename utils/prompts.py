@@ -1,5 +1,6 @@
 from typing import List
 
+
 class SummaryPrompts:
     @staticmethod
     def get_system_prompt() -> str:
@@ -72,5 +73,41 @@ class SummaryPrompts:
         6. Avoid creating separate entries for updates that are part of the same development effort.
         
         Input bullets:
+        {bullets}
+        """
+
+    @staticmethod
+    def get_reddit_summary_prompt(bullets: List[str], days_covered: int) -> str:
+        return f"""
+        Create a comprehensive Reddit post summarizing development updates from the Ergo ecosystem over the past {days_covered} days.
+        Use the original, detailed bullet points to create an informative and engaging post.
+
+        Key Requirements:
+        1. Begin with a title using this format:
+           # Ergo Development Update - {days_covered} Day Roundup
+        2. Start with a brief introduction paragraph explaining what this update covers.
+        3. Structure the content into clear sections:
+           ## Core Development
+           ## dApp & Tool Development
+           ## Infrastructure & Integration
+           ## Community & Ecosystem
+        4. For each update:
+           - Include all technical details from the original bullets
+           - Expand abbreviations and explain technical terms where helpful
+           - Group related updates together into coherent paragraphs
+           - Keep all project names in **bold**
+           - Convert Discord links into `[discussed here]` inline links
+        5. Writing style:
+           - Use clear, engaging language suitable for Reddit
+           - Maintain technical accuracy while being accessible
+           - Add context where helpful for newer community members
+           - Use proper markdown formatting for readability
+        6. Unlike the Discord summary, this version should:
+           - Be more detailed and comprehensive
+           - Include more context and explanations
+           - Use full paragraphs where appropriate
+           - Maintain all technical information from original bullets
+
+        Original detailed bullets to expand from:
         {bullets}
         """
