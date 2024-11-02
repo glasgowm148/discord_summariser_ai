@@ -1,15 +1,12 @@
 """Process chunks of text into bullet points."""
 import re
-from typing import List
+from typing import List, Optional
 from openai import OpenAI
 from dataclasses import dataclass, field
-from pathlib import Path
-from datetime import datetime
 
 from config.settings import (
     MAX_RETRIES,
-    MIN_BULLETS_PER_CHUNK,
-    OUTPUT_DIR
+    MIN_BULLETS_PER_CHUNK
 )
 from services.base_service import BaseService
 from utils.prompts import SummaryPrompts
@@ -24,6 +21,8 @@ class BulletPoint:
     validation_messages: List[str] = field(default_factory=list)
 
 class BulletProcessor(BaseService):
+    SERVER_ID = "668903786361651200"  # Ergo Discord server ID
+
     def __init__(self, api_key: str):
         super().__init__()
         self.api_key = api_key
@@ -72,29 +71,33 @@ class BulletProcessor(BaseService):
         self.logger.info(f"Bullet Generation Complete - Total Valid Bullets: {self.total_bullets}")
         self.logger.info("="*80 + "\n")
 
-        final_bullets = self._post_process_bullets(collected_bullets)
-        self._save_bullets(final_bullets)
-        return final_bullets
+        return self._post_process_bullets(collected_bullets)
 
     def _optimize_chunk_size(self, chunk: str) -> str:
         """Optimize chunk size for GPT-4 processing."""
-        max_chars = 128000 * 4
+        # Split chunk into messages if it contains message separators
+        messages = chunk.split("---\n")
         
-        if len(chunk) <= max_chars:
+        # If it's a single message or doesn't use separators, return as is
+        if len(messages) <= 1:
             return chunk
             
-        messages = chunk.split("---\n")
+        # Process messages in reverse chronological order (most recent first)
         optimized_messages = []
-        current_size = 0
+        current_length = 0
+        target_length = 100000  # Target length in characters (conservative estimate for tokens)
         
         for msg in messages:
-            msg_size = len(msg) + 4
-            if current_size + msg_size > max_chars:
+            msg_length = len(msg) + 4  # Add 4 for the separator
+            if current_length + msg_length > target_length:
                 break
             optimized_messages.append(msg)
-            current_size += msg_size
+            current_length += msg_length
             
-        return "---\n".join(optimized_messages) + "---\n"
+        # Return optimized chunk
+        if optimized_messages:
+            return "---\n".join(optimized_messages) + "---\n"
+        return messages[0] + "---\n"  # Fallback to first message if optimization fails
 
     def _process_single_chunk(self, chunk: str, chunk_num: int) -> List[str]:
         """Process a single chunk into bullet points."""
@@ -126,7 +129,16 @@ class BulletProcessor(BaseService):
                     self.logger.info(f"   Validation: {validation_result}")
                     
                     if bullet.is_valid:
-                        valid_new_bullets.append(bullet.content)
+                        # Validate Discord link format
+                        if self._validate_discord_link(bullet.discord_link):
+                            valid_new_bullets.append(bullet.content)
+                        else:
+                            # Try to fix the Discord link
+                            fixed_bullet = self._fix_discord_link(bullet.content, chunk)
+                            if fixed_bullet:
+                                valid_new_bullets.append(fixed_bullet)
+                            else:
+                                self.logger.warning(f"   ⚠️  Could not fix Discord link: {bullet.discord_link}")
                 
                 if valid_new_bullets:
                     self.logger.info(f"\n✨ Valid bullets this attempt: {len(valid_new_bullets)}/{len(new_bullets)}")
@@ -160,7 +172,7 @@ class BulletProcessor(BaseService):
                     {"role": "user", "content": SummaryPrompts.get_user_prompt(chunk, current_bullets)}
                 ],
                 temperature=temperature,
-                max_tokens=2000
+                max_tokens=4000
             )
             
             summary = response.choices[0].message.content
@@ -178,9 +190,15 @@ class BulletProcessor(BaseService):
             bullet.validation_messages.append("Does not start with '-'")
             return bullet
 
-        discord_match = re.search(r'\(https://discord\.com/channels/[^)]+\)', text)
+        # Extract project name
+        project_match = re.search(r'\*\*([^*]+)\*\*', text)
+        if project_match:
+            bullet.project_name = project_match.group(1).strip()
+
+        # Extract Discord link
+        discord_match = re.search(r'\[([^\]]+)\]\((https://discord\.com/channels/[^)]+)\)', text)
         if discord_match:
-            bullet.discord_link = discord_match.group(0)
+            bullet.discord_link = discord_match.group(2)
         else:
             bullet.validation_messages.append("Missing Discord link")
             return bullet
@@ -189,12 +207,43 @@ class BulletProcessor(BaseService):
             bullet.validation_messages.append("Too short")
             return bullet
 
-        project_match = re.search(r'\*\*([^*]+)\*\*', text)
-        if project_match:
-            bullet.project_name = project_match.group(1).strip()
-
         bullet.is_valid = True
         return bullet
+
+    def _validate_discord_link(self, link: str) -> bool:
+        """Validate Discord link format."""
+        # Check if link matches expected format with server ID, channel ID, and message ID
+        pattern = f'^https://discord\.com/channels/{self.SERVER_ID}/\\d+/\\d+$'
+        return bool(re.match(pattern, link))
+
+    def _fix_discord_link(self, content: str, chunk: str) -> Optional[str]:
+        """Try to fix a Discord link using message metadata from the chunk."""
+        try:
+            # Find the message ID and channel ID in the chunk
+            message_match = re.search(r'Message ID: (\d+)', chunk)
+            channel_match = re.search(r'Channel ID: (\d+)', chunk)
+            
+            if message_match and channel_match:
+                message_id = message_match.group(1)
+                channel_id = channel_match.group(1)
+                
+                # Create the correct Discord link
+                correct_link = f"https://discord.com/channels/{self.SERVER_ID}/{channel_id}/{message_id}"
+                
+                # Replace the incorrect link in the content
+                fixed_content = re.sub(
+                    r'\(https://discord\.com/channels/[^)]+\)',
+                    f'({correct_link})',
+                    content
+                )
+                
+                return fixed_content
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"Error fixing Discord link: {e}")
+            return None
 
     def _validate_bullet_verbose(self, bullet: BulletPoint) -> str:
         """Return detailed validation results for logging."""
@@ -206,7 +255,10 @@ class BulletProcessor(BaseService):
             result.append("❌ Format")
 
         if bullet.discord_link:
-            result.append("✓ Link")
+            if self._validate_discord_link(bullet.discord_link):
+                result.append("✓ Link")
+            else:
+                result.append("❌ Invalid Link Format")
         else:
             result.append("❌ Link")
 
@@ -272,23 +324,3 @@ class BulletProcessor(BaseService):
         self.logger.info("="*80 + "\n")
         
         return final_bullets
-
-    def _save_bullets(self, bullets: List[str]) -> None:
-        """Save bullet points to output/bullets.md."""
-        try:
-            # Ensure output directory exists
-            output_dir = Path(OUTPUT_DIR)
-            output_dir.mkdir(exist_ok=True)
-            
-            bullets_file = output_dir / 'bullets.md'
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            bullet_content = "\n".join(bullets)
-            content = f"\n## Bullet Points {current_date}\n\n{bullet_content}\n"
-            
-            # Append to bullets.md
-            with open(bullets_file, 'a') as f:
-                f.write(content)
-            
-            self.logger.info("Saved bullet points to output/bullets.md")
-        except Exception as e:
-            self.handle_error(e, {"context": "Saving to bullets.md"})

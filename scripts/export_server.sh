@@ -1,12 +1,11 @@
 #!/bin/bash
-# Reference: https://github.com/Tyrrrz/DiscordChatExporter/blob/master/.docs/Using-the-CLI.md
+# Export full server history for specified time range
 
 # Load configuration from config/.env file
 source config/.env
 
 # Constants
 OUTPUT_DIR="./output"
-#EXPORTER="DiscordChatExporter/DiscordChatExporter.Cli"
 EXPORTER="DiscordChatExporter/DiscordChatExporter-linux/mac/DiscordChatExporter.Cli.osx-arm64/DiscordChatExporter.Cli"
 
 # Prompt user for time range in days

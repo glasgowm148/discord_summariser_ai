@@ -11,12 +11,16 @@ class ChunkProcessor:
         current_chunk = []
         current_size = 0
         
-        for msg in messages:
+        # Sort messages by timestamp in reverse order (newest first)
+        sorted_messages = sorted(messages, key=lambda x: x.timestamp, reverse=True)
+        
+        for msg in sorted_messages:
             formatted_msg = (
                 f"Channel: {msg.channel_category}/{msg.channel_name}\n"
                 f"Author: {msg.author_name}\n"
                 f"Message: {msg.message_content}\n"
-                f"ID: {msg.channel_id}/{msg.message_id}\n"
+                f"Channel ID: {msg.channel_id}\n"  # Make channel_id more prominent
+                f"Message ID: {msg.message_id}\n"  # Make message_id more prominent
                 f"Timestamp: {msg.timestamp}\n"
                 "---\n"
             )

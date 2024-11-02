@@ -10,12 +10,15 @@ from openai import OpenAI
 
 from utils.prompts import SummaryPrompts
 from services.base_service import BaseService
+from services.project_manager import ProjectManager
+from config.settings import OUTPUT_DIR
 
 
 class SummaryFinalizer(BaseService):
     def __init__(self, api_key: str):
         super().__init__()
         self.api_key = api_key
+        self.project_manager = ProjectManager()
         self.initialize()
 
     def initialize(self) -> None:
@@ -43,6 +46,12 @@ class SummaryFinalizer(BaseService):
             # Create Reddit summary (detailed version)
             reddit_summary = self._create_reddit_summary(original_bullets, days_covered)
 
+            # Learn from the summaries
+            if discord_summary:
+                self.project_manager.learn_from_summary(discord_summary)
+            if reddit_summary:
+                self.project_manager.learn_from_summary(reddit_summary)
+
             # Save summaries to output/sent_summaries.md
             if discord_summary:
                 self._save_to_sent_summaries("Discord", discord_summary)
@@ -64,14 +73,25 @@ class SummaryFinalizer(BaseService):
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
+                # Get project contexts
+                project_contexts = self.project_manager.get_all_project_contexts()
+                
+                # Add project context to the prompt
+                prompt = f"""Previous project context:
+{project_contexts}
+
+{SummaryPrompts.get_final_summary_prompt(unique_bullets, days_covered)}"""
+
                 final_response = self.client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {
+                            "role": "system",
+                            "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a concise Discord summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs."
+                        },
+                        {
                             "role": "user",
-                            "content": SummaryPrompts.get_final_summary_prompt(
-                                unique_bullets, days_covered
-                            ),
+                            "content": prompt,
                         }
                     ],
                     temperature=0.6,
@@ -101,14 +121,25 @@ class SummaryFinalizer(BaseService):
     ) -> Optional[str]:
         """Create a detailed Reddit summary from original bullets."""
         try:
+            # Get project contexts
+            project_contexts = self.project_manager.get_all_project_contexts()
+            
+            # Add project context to the prompt
+            prompt = f"""Previous project context:
+{project_contexts}
+
+{SummaryPrompts.get_reddit_summary_prompt(original_bullets, days_covered)}"""
+
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {
+                        "role": "system",
+                        "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a detailed Reddit summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs."
+                    },
+                    {
                         "role": "user",
-                        "content": SummaryPrompts.get_reddit_summary_prompt(
-                            original_bullets, days_covered
-                        ),
+                        "content": prompt,
                     }
                 ],
                 temperature=0.7,
@@ -147,10 +178,11 @@ class SummaryFinalizer(BaseService):
                     cleaned_lines.append(line)
                 else:
                     cleaned_lines.append(line)
+
         # Join lines and add Reddit footer
         cleaned_content = "\n".join(cleaned_lines).strip()
         footer = (
-            "\n\n---\n*This summary is auto-generated from the Ergo Discord. "
+            "\n\n---\n*This summary is generated from the Ergo Discord. "
             "Join us on [Discord](https://discord.gg/ergo-platform-668903786361651200) for real-time updates "
             "and discussions!*"
         )
@@ -233,7 +265,21 @@ class SummaryFinalizer(BaseService):
                 continue
 
             if line.startswith("#") or line.startswith("-"):
-                valid_sections.append(line)
+                # Ensure Discord links are preserved exactly
+                if "https://discord.com/channels/" in line:
+                    # Extract and validate Discord link
+                    match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', line)
+                    if match:
+                        discord_link = match.group(0)
+                        # Keep the link exactly as is
+                        valid_sections.append(line)
+                    else:
+                        # If link format is invalid, try to fix it
+                        line = re.sub(r'https://discord\.com/channels/[^)\s]+', 
+                                    'https://discord.com/channels/668903786361651200', line)
+                        valid_sections.append(line)
+                else:
+                    valid_sections.append(line)
             else:
                 # For non-header, non-bullet lines, check if they're part of the content
                 if len(line) > 10:  # Arbitrary minimum length for content
@@ -251,7 +297,7 @@ class SummaryFinalizer(BaseService):
         """Save formatted summary to output/sent_summaries.md."""
         try:
             # Ensure output directory exists
-            output_dir = Path("output")
+            output_dir = Path(OUTPUT_DIR)
             output_dir.mkdir(exist_ok=True)
             
             summaries_file = output_dir / 'sent_summaries.md'
