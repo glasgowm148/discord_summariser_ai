@@ -214,26 +214,24 @@ class BulletProcessor(BaseService):
             raise
 
     def _create_bullet_point(self, text: str) -> BulletPoint:
-        """Create and validate a bullet point."""
+        """Create a bullet point object from text."""
         bullet = BulletPoint(content=text)
 
-        if not text.strip().startswith("-"):
+        if not text.strip().startswith('-'):
             bullet.validation_messages.append("Does not start with '-'")
             return bullet
 
         # Extract project name
-        project_match = re.search(r"\*\*([^*]+)\*\*", text)
+        project_match = re.search(r'\*\*([^*]+)\*\*', text)
         if project_match:
             bullet.project_name = project_match.group(1).strip()
 
         # Extract channel_id and message_id from the text
-        discord_match = re.search(
-            r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)", text
-        )
+        discord_match = re.search(r'https://discord\.com/channels/(\d+)/(\d+)/(\d+)', text)
         if discord_match:
             bullet.discord_link = discord_match.group(0)
-            bullet.channel_id = discord_match.group(2)
-            bullet.message_id = discord_match.group(3)
+            bullet.channel_id = discord_match.group(2)  # Channel ID is the second group
+            bullet.message_id = discord_match.group(3)  # Message ID is the third group
 
             print(f"Extracted Discord Link: {bullet.discord_link}")
             print(f"Extracted Channel ID: {bullet.channel_id}")
@@ -248,6 +246,10 @@ class BulletProcessor(BaseService):
             bullet.validation_messages.append("Missing Discord link")
             print("No Discord link found in the bullet.")
 
+        # Remove emojis from the beginning if any
+        bullet.content = re.sub(r'^- [^\w\s]', '- ', bullet.content)
+
+        # Validate content length
         if len(text.strip()) <= 50:
             bullet.validation_messages.append("Too short")
             return bullet

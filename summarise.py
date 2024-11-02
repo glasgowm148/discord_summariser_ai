@@ -15,6 +15,7 @@ from services.csv_loader import CsvLoaderService
 from services.summary_generator import SummaryGenerator
 from services.discord_service import DiscordService
 from services.twitter_service import TwitterService
+from services.meta_service import MetaService
 from utils.logging_config import setup_logging
 
 
@@ -68,6 +69,7 @@ class ChatSummariser(BaseService):
             self.discord_service = DiscordService()
             self.twitter_service = TwitterService()
             self.reddit_service = RedditService()
+            self.meta_service = MetaService()
         except Exception as e:
             self.handle_error(e, {"context": "Service initialization"})
             raise
@@ -159,6 +161,7 @@ class ChatSummariser(BaseService):
                 self.discord_service.send_reddit_summary(reddit_summary)
                 self._post_to_reddit(reddit_summary)
             self._prompt_twitter_post(discord_summary_with_cta)
+            self._prompt_meta_post(discord_summary_with_cta)
         except Exception as e:
             self.handle_error(e, {"context": "Platform distribution"})
 
@@ -218,6 +221,14 @@ class ChatSummariser(BaseService):
 
         except Exception as e:
             self.handle_error(e, {"context": "Twitter posting"})
+
+    async def _prompt_meta_post(self, summary_with_call_to_action: str) -> None:
+        """Prompt user for Meta platform posting."""
+        try:
+            await self.meta_service.prompt_and_post(summary_with_call_to_action)
+            self.logger.info("Meta platform posting process completed")
+        except Exception as e:
+            self.handle_error(e, {"context": "Meta posting"})
 
 
 if __name__ == "__main__":

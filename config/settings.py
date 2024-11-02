@@ -9,7 +9,7 @@ CONFIG_DIR = PROJECT_ROOT / 'config'
 # API Settings
 MAX_TOKENS = 8000
 MAX_CHUNK_SIZE = 128000
-MIN_BULLETS_PER_CHUNK = 5
+MIN_BULLETS_PER_CHUNK = 10
 MAX_RETRIES = 7
 
 # Message Processing
@@ -31,5 +31,9 @@ REQUIRED_ENV_VARS = {
     "TWITTER_CONSUMER_SECRET": "Twitter Consumer Secret",
     "TWITTER_ACCESS_TOKEN": "Twitter Access Token",
     "TWITTER_ACCESS_TOKEN_SECRET": "Twitter Access Token Secret",
-    "DISCORD_WEBHOOK_URL": "Discord Webhook URL"
+    "DISCORD_WEBHOOK_URL": "Discord Webhook URL",
+    "META_FB_ACCESS_TOKEN": "Meta Facebook Access Token",
+    "META_IG_ACCESS_TOKEN": "Meta Instagram Access Token",
+    "META_FB_PAGE_ID": "Meta Facebook Page ID",
+    "META_IG_ACCOUNT_ID": "Meta Instagram Account ID"
 }

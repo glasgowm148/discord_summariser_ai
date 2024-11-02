@@ -218,6 +218,93 @@ class SummaryFinalizer(BaseService):
             self.handle_error(e, {"context": "Formatting for Twitter"})
             return summary
 
+    def format_for_facebook(self, summary: str) -> str:
+        """Format the summary to be Facebook-friendly with appropriate formatting and links."""
+        try:
+            formatted_lines = []
+            for line in summary.split("\n"):
+                if not line.strip():
+                    continue
+
+                # Convert section headers to Facebook-style formatting
+                if line.startswith("#"):
+                    line = line.lstrip("#").strip().upper()
+                    formatted_lines.extend(["", "📢 " + line, ""])
+                    continue
+
+                # Process bullet points
+                if line.startswith("-"):
+                    # Keep bold formatting for project names
+                    line = line.lstrip("- ").strip()
+                    
+                    # Convert Discord links to a more readable format
+                    line = re.sub(
+                        r"\(https://discord\.com/channels/[^)]+\)",
+                        "(View full discussion on Discord)",
+                        line
+                    )
+                    
+                    # Add bullet point emoji
+                    formatted_lines.append("• " + line)
+                else:
+                    formatted_lines.append(line)
+
+            formatted_summary = "\n".join(formatted_lines).strip()
+            
+            # Add Facebook-specific call to action
+            formatted_summary += "\n\n🔗 Join our Discord community for real-time updates and discussions: https://discord.gg/ergo-platform-668903786361651200"
+            
+            return formatted_summary
+
+        except Exception as e:
+            self.handle_error(e, {"context": "Formatting for Facebook"})
+            return summary
+
+    def format_for_instagram(self, summary: str) -> str:
+        """Format the summary to be Instagram-friendly with appropriate formatting and hashtags."""
+        try:
+            formatted_lines = []
+            for line in summary.split("\n"):
+                if not line.strip():
+                    continue
+
+                # Convert section headers to Instagram-style formatting
+                if line.startswith("#"):
+                    line = line.lstrip("#").strip().upper()
+                    formatted_lines.extend(["", "🚀 " + line + " 🚀", ""])
+                    continue
+
+                # Process bullet points
+                if line.startswith("-"):
+                    # Keep bold formatting for project names
+                    line = line.lstrip("- ").strip()
+                    
+                    # Remove Discord links but keep the text
+                    line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+                    line = re.sub(r"\(https://discord\.com/channels/[^)]+\)", "", line)
+                    
+                    # Add varied bullet point emojis
+                    bullet_emojis = ["💫", "✨", "🔸", "📌"]
+                    emoji = bullet_emojis[len(formatted_lines) % len(bullet_emojis)]
+                    formatted_lines.append(f"{emoji} {line}")
+                else:
+                    formatted_lines.append(line)
+
+            formatted_summary = "\n".join(formatted_lines).strip()
+            
+            # Add Instagram-specific hashtags
+            hashtags = "\n\n.\n.\n.\n#Ergo #Blockchain #Cryptocurrency #CryptoNews #BlockchainDevelopment #DeFi #CryptoTechnology #Ergonauts #CryptoInnovation #BlockchainInnovation #CryptoUpdates #BlockchainUpdates"
+            formatted_summary += hashtags
+            
+            # Add Instagram-specific call to action
+            formatted_summary += "\n\n💫 Join our Discord community for real-time updates! Link in bio."
+            
+            return formatted_summary
+
+        except Exception as e:
+            self.handle_error(e, {"context": "Formatting for Instagram"})
+            return summary
+
     def _remove_duplicate_bullets(self, bullets: List[str]) -> List[str]:
         """Remove duplicate bullets while preserving the most detailed version."""
         seen_content = {}

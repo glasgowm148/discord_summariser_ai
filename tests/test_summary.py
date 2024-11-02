@@ -14,10 +14,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
     raise ValueError("OPENAI_API_KEY environment variable is not set.")
 
-
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 
 class SummaryValidator:
     def __init__(self):
@@ -114,14 +111,12 @@ def main():
 
     # Example bullet points to validate
     bullets = [
-        "- 🔧 **OnErgo**: An educational platform with DeFi and event calendar features. [Join us on Discord](https://discord.com/channels/123456789)",
-        "- 🚀 **Rosen Bridge**: P2P transaction signing available 24 hours. [Join us on Discord](https://discord.com/channels/987654321)",
-        "- 🛠️ **Miner Rights Protocol**: Developer [NeuralYogi](https://discord.com/channels/668903786361651200/1153460448214122526/1301947310988595296) shared a link to the whitepaper for the **Miner Rights Protocol**, introducing innovative governance concepts within the mining community. Community feedback is encouraged for further refinement.",
-        "- 🔧 **Cloudflare**: A developer reported issues with Cloudflare's edge servers impacting tunnel connections, but services were restored shortly after, ensuring minimal impact to the community. For more details, see the update [here](https://discord.com/channels/668903786361651200).",
-        "- 🔧 **RocksDB**: Developer Paul highlighted potential issues with **RocksDB**, emphasizing the importance of resolving current dependencies with an alternative version of the library. A review of pull request #2115 is requested as part of ongoing development efforts. For more details, check the discussion [here](https://discord.com/channels/668903786361651200).",
-        "- 🛠️ **Ergo One Stop Shop**: Developer [tulo_ergominnow](https://discord.com/channels/668903786361651200/1295700255807111209/1302057590473232494) confirmed the update of project documentation to Medium, aimed at improving accessibility and engagement.",
-        "- 🔧 **Rosen**: Developer [Paul1938](https://discord.com/channels/668903786361651200/964131671609860126/1301937602445967371) emphasized the need for a community manager and a communication/status page to enhance user trust and improve interaction within the ecosystem.",
-        "- 🔧 **Rosen Bridge**: Ongoing discussions are addressing a P2P issue affecting transaction signing, with developers actively working on a resolution as mentioned by [zargarzadehmoein](https://discord.com/channels/668903786361651200).",
+        "- **CyberVerse**: Developer [gvuldis](https://discord.com/channels/668903786361651200/1046474534473171114/1301987982739243109) shared plans for an educational platform, **OneErgo**, aimed at onboarding new users into the Ergo DeFi ecosystem through gamification and event aggregation.",
+        "- **Documentation**: Developer [NeuralYogi](https://discord.com/channels/668903786361651200/840316505849987092/1301945380610506754) submitted a document linking to prototype code, showcasing ongoing development efforts.",
+        "- **DuckPools**: User [__daddychill__](https://discord.com/channels/668903786361651200/1003474403683729469/1301942061691568171) reported an issue with the withdrawal function hanging during transactions and is actively seeking insights into required permissions and known issues.",
+        "- **Ergo One Stop Shop**: Developer [tulo_ergominnow](https://discord.com/channels/668903786361651200/1295700255807111209/1302057441873100871) released a Medium article outlining project goals, focusing on scalability and accommodating various wallets.",
+        "- **Miner Rights Protocol**: Developer [NeuralYogi](https://discord.com/channels/668903786361651200/1153460448214122526/1301947310988595296) submitted a detailed whitepaper for review during Ergo Hack 9, focusing on enhancing community involvement through a governance structure for mining rights.",
+        "- **Gluon Gold**: User [Zahnentferner](https://discord.com/channels/668903786361651200/1158052036026302495/1302127363709993032) discussed the influence of leverage in Gluon Gold based on reserve ratios, particularly in the context of recent ERG price fluctuations.",
     ]
 
     # Validate the summary
