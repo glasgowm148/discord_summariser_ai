@@ -1,6 +1,4 @@
 """Finalize and format summaries for different platforms."""
-import logging
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +41,9 @@ class SummaryFinalizer(BaseService):
                 unique_bullets, days_covered
             )
 
+            print(f"Discord Summary: {discord_summary}")
+            print(f"Discord Summary with CTA: {discord_summary_with_cta}")
+
             # Create Reddit summary (detailed version)
             reddit_summary = self._create_reddit_summary(original_bullets, days_covered)
 
@@ -73,10 +74,7 @@ class SummaryFinalizer(BaseService):
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                # Get project contexts
                 project_contexts = self.project_manager.get_all_project_contexts()
-                
-                # Add project context to the prompt
                 prompt = f"""Previous project context:
 {project_contexts}
 
@@ -100,19 +98,14 @@ class SummaryFinalizer(BaseService):
 
                 summary_content = final_response.choices[0].message.content
 
-                if not any(
-                    line.strip().startswith("-") for line in summary_content.split("\n")
-                ):
+                if not any(line.strip().startswith("-") for line in summary_content.split("\n")):
                     raise ValueError("Generated summary contains no bullet points")
 
                 final_summary = self._clean_final_summary(summary_content)
                 summary_with_cta = self._add_call_to_action(final_summary)
                 return final_summary, summary_with_cta
-
             except Exception as e:
-                self.logger.warning(
-                    f"Discord summary attempt {attempt + 1}/{max_attempts} failed: {str(e)}"
-                )
+                self.logger.warning(f"Discord summary attempt {attempt + 1}/{max_attempts} failed: {str(e)}")
                 if attempt == max_attempts - 1:
                     raise
 
@@ -121,10 +114,7 @@ class SummaryFinalizer(BaseService):
     ) -> Optional[str]:
         """Create a detailed Reddit summary from original bullets."""
         try:
-            # Get project contexts
             project_contexts = self.project_manager.get_all_project_contexts()
-            
-            # Add project context to the prompt
             prompt = f"""Previous project context:
 {project_contexts}
 
@@ -147,14 +137,10 @@ class SummaryFinalizer(BaseService):
             )
 
             reddit_content = response.choices[0].message.content
-            # Validate and clean the Reddit content
-            if not any(
-                line.strip().startswith("#") for line in reddit_content.split("\n")
-            ):
+            if not any(line.strip().startswith("#") for line in reddit_content.split("\n")):
                 raise ValueError("Generated Reddit content contains no headers")
             cleaned_content = self._clean_reddit_content(reddit_content)
             return cleaned_content
-
         except Exception as e:
             self.handle_error(e, {"context": "Creating Reddit summary"})
             return None
@@ -270,7 +256,6 @@ class SummaryFinalizer(BaseService):
                     # Extract and validate Discord link
                     match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', line)
                     if match:
-                        discord_link = match.group(0)
                         # Keep the link exactly as is
                         valid_sections.append(line)
                     else:

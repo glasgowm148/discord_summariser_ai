@@ -1,21 +1,33 @@
 # services/summary_generator.py
 from typing import List, Optional, Tuple
+import re
+import logging
+import os
 
 import pandas as pd
 
 from models.discord_message import DiscordMessage
-from services.bullet_processor import BulletProcessor
+from services.bullet_processor import BulletProcessor, BulletPoint
 from services.chunk_processor import ChunkProcessor
 from services.summary_finalizer import SummaryFinalizer
 from utils.logging_config import setup_logging
+from services.base_service import BaseService
+from utils.prompts import SummaryPrompts  # Change to absolute import
 
 
-class SummaryGenerator:
+class SummaryGenerator(BaseService):
+    SERVER_ID = "668903786361651200"  # Replace with your actual server ID
+
     def __init__(self, api_key: str):
         self.logger = setup_logging()
         self.chunk_processor = ChunkProcessor()
         self.bullet_processor = BulletProcessor(api_key)
         self.summary_finalizer = SummaryFinalizer(api_key)
+
+    def initialize(self):
+        # Implement the initialization logic here
+        self.logger.info("SummaryGenerator initialized")
+        # Any other setup code can go here
 
     def generate_summary(
         self, df: pd.DataFrame, days_covered: int
@@ -67,59 +79,66 @@ class SummaryGenerator:
 
     def _convert_df_to_messages(self, df: pd.DataFrame) -> List[DiscordMessage]:
         messages = []
-        errors = 0
-        for idx, row in df.iterrows():
+        server_id = os.getenv("DISCORD_SERVER_ID")  # Retrieve the server ID from environment variables
+
+        for index, row in df.iterrows():
             try:
-                # Validate required fields are present
-                required_fields = [
-                    "channel_id",
-                    "channel_category",
-                    "channel_name",
-                    "message_id",
-                    "message_content",
-                    "author_name",
-                ]
-                missing_fields = [
-                    field
-                    for field in required_fields
-                    if field not in row or pd.isna(row[field])
-                ]
-                if missing_fields:
-                    self.logger.warning(
-                        f"Row {idx} missing required fields: {missing_fields}"
-                    )
-                    continue
-
                 message = DiscordMessage(
-                    channel_id=str(row["channel_id"]),
-                    channel_category=str(row["channel_category"]),
-                    channel_name=str(row["channel_name"]),
-                    message_id=str(row["message_id"]),
-                    message_content=str(row["message_content"]),
-                    author_name=str(row["author_name"]),
-                    timestamp=str(row.get("message_timestamp", "")),
+                    server_id=server_id,  # Use the hardcoded server ID
+                    channel_id=row['channel_id'],
+                    channel_category=row['channel_category'],
+                    channel_name=row['channel_name'],
+                    message_id=row['message_id'],
+                    message_content=row['message_content'],
+                    author_name=row['author_name'],
+                    timestamp=row['message_timestamp']  # Use the correct column name
+                    # Do NOT include discord_link here
                 )
-
-                # Validate message content is not empty
-                if not message.message_content.strip():
-                    self.logger.warning(f"Row {idx} has empty message content")
-                    continue
-
                 messages.append(message)
             except Exception as e:
-                self.logger.warning(
-                    f"Error converting row {idx} to DiscordMessage: {e}"
-                )
-                errors += 1
-                if errors > len(df) * 0.5:  # If more than 50% of rows fail
-                    raise ValueError(
-                        "Too many errors converting DataFrame rows to messages"
-                    ) from e
+                # Log the error with row details
+                logging.warning(f"Error converting row {index} to DiscordMessage: {e}. Row data: {row.to_dict()}")
                 continue
 
         if not messages:
-            raise ValueError(
-                "No valid messages could be created from DataFrame"
-            ) from None
-
+            raise ValueError("Too many errors converting DataFrame rows to messages")
+        
         return messages
+
+    def _create_bullet_point(self, text: str) -> BulletPoint:
+        bullet = BulletPoint(content=text)
+
+        if not text.strip().startswith('-'):
+            bullet.validation_messages.append("Does not start with '-'")
+            return bullet
+
+        # Extract project name
+        project_match = re.search(r'\*\*([^*]+)\*\*', text)
+        if project_match:
+            bullet.project_name = project_match.group(1).strip()
+
+        # Extract channel_id and message_id from the text
+        discord_match = re.search(r'https://discord\.com/channels/(\d+)/(\d+)/(\d+)', text)
+        if discord_match:
+            bullet.discord_link = discord_match.group(0)
+            bullet.channel_id = discord_match.group(2)  # Channel ID is the second group
+            bullet.message_id = discord_match.group(3)  # Message ID is the third group
+
+            print(f"Extracted Discord Link: {bullet.discord_link}")
+            print(f"Extracted Channel ID: {bullet.channel_id}")
+            print(f"Extracted Message ID: {bullet.message_id}")
+
+            # Validate the extracted link
+            if not self._validate_discord_link(bullet.discord_link):
+                bullet.validation_messages.append("Invalid Discord link format")
+                print("Invalid Discord link detected.")
+                return bullet
+        else:
+            bullet.validation_messages.append("Missing Discord link")
+            print("No Discord link found in the bullet.")
+
+        # Use the correct author name in the bullet point
+        bullet.author_name = self.author_name  # Ensure this is set correctly
+
+        bullet.is_valid = True
+        return bullet

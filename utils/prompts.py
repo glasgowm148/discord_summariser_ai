@@ -1,134 +1,81 @@
-"""Prompts for generating summaries."""
+"""Prompts for generating structured summaries with unique emojis and linked discussions for Ergo development updates."""
 
 class SummaryPrompts:
     @staticmethod
     def get_system_prompt() -> str:
-        """Get the system prompt for bullet point generation."""
-        return """You are a technical writer for the Ergo blockchain platform. Your task is to create clear, informative bullet points from Discord chat messages. Each bullet point should:
+        """Generate the system prompt for concise, bullet-pointed summaries from Ergo Discord discussions."""
+        return """
+# Instruction for Ergo Discord Summary Generation
 
-1. Start with a relevant emoji that matches the content and nature of the update
-2. Include the project name in bold (**Project Name**)
-3. Reference the original message with a Discord link using the exact channel_id and message_id from the message
-4. Provide detailed information about the update, including:
-   - Specific technical details and changes
-   - Impact or implications of the update
-   - Any relevant context or dependencies
-   - Names of key contributors when mentioned
-5. Focus on technical details and development progress
-6. Maintain a professional tone
+Your task is to distill Discord messages into concise, informative bullet points specifically for the Ergo blockchain platform. Each bullet point should:
 
-Example format:
-- 🔧 **Project Name**: Developer [announced](discord-link) specific technical update. Additional context or details about the update.
+- Start with a unique, relevant emoji.
+- Bold the project name like this: **Project Name**.
+- Include a direct link to the original message, using the message's exact `channel_id` and `message_id` without modification.
+- Highlight critical information about the update, such as:
+    - Technical changes, new features, or issues
+    - Implications for the ecosystem or user experience
+    - Dependencies, connections with other projects, or requirements
+    - Key contributor names when available
 
-IMPORTANT: When creating Discord links, you must use the exact channel_id and message_id from each message's metadata. The link format must be: https://discord.com/channels/668903786361651200/[channel_id]/[message_id]
+### Example Bullet Format:
+- 🛠️ **Satergo**: [Aberg](https://discord.com/channels/668903786361651200/[channel_id]/[message_id]) confirmed initial support for one wallet, with scalable code for future multi-wallet capabilities.
+
+### Key Points to Follow:
+1. Use unique emojis per bullet to enhance readability.
+2. Embed the original `channel_id` and `message_id` in each link without alteration.
+3. Maintain a technical, professional tone that emphasizes development progress.
+4. Focus only on relevant, technical messages and skip casual or non-development-related discussions.
+
+### Discord Link Format:
+https://discord.com/channels/668903786361651200/[channel_id]/[message_id]
 """
 
     @staticmethod
     def get_user_prompt(chunk: str, current_bullets: int) -> str:
-        """Get the user prompt for bullet point generation."""
-        return f"""Create detailed bullet points from these Discord messages, focusing on development updates and technical information. Current bullet count: {current_bullets}.
+        """Generate the user prompt to summarize a batch of messages into bullet points."""
+        return f"""
+# User Instruction for Generating Bullet Points
 
-Messages:
+Condense these Discord messages into bullet points focused on Ergo development. Current bullet count: {current_bullets}.
+
+### Messages:
 {chunk}
 
-Requirements:
-1. Start each bullet with "- " followed by an appropriate emoji that matches the content
-2. Put project names in bold using **Project Name** format
-3. Include Discord message links using [text](link) format, where the link MUST use the exact channel_id and message_id from the message metadata in format: https://discord.com/channels/668903786361651200/[channel_id]/[message_id]
-4. Focus on technical details and development progress, including:
+### Bullet Point Requirements:
+1. Begin each bullet with "- " and a unique emoji that fits the content.
+2. Bold project names with **Project Name** format.
+3. Add a direct link to the original message, ensuring the exact `channel_id` and `message_id` are in the URL: https://discord.com/channels/668903786361651200/[channel_id]/[message_id].
+4. Focus on development and technical specifics:
    - Specific changes or updates made
-   - Technical implementation details
-   - Impact on users or the ecosystem
-   - Dependencies or requirements
-   - Names of key contributors
-5. Be specific about what was updated or changed
-6. Maintain a professional tone
-7. Exclude casual conversations or non-development topics
-8. IMPORTANT: Use the exact channel_id and message_id from each message's metadata to construct Discord links. Do not make up or modify these IDs.
+   - Technical details and their impact on the ecosystem
+   - Dependencies or contributors’ names
+5. Exclude casual conversations and non-technical topics.
+6. Use unique emojis for each bullet to differentiate updates clearly.
 
-Key Project Categories to Watch For:
-- ErgoHack Projects (OnErgo, 3D Explorer, Minotaur, Miner Rights Protocol, Last Byte Bar, Satergo)
-- DeFi/Infrastructure (Rosen Bridge, DuckPools, Gluon, Bober YF, RocksDB, DexYUSD, CyberVerse)
-- Documentation (Ergo One Stop Shop)
-- Technical Infrastructure (Browser compatibility, permissions)
-
-For each message, look at its metadata (channel_id and message_id) and use those exact values in the Discord link.
+### Key Project Categories:
+- ErgoHack Projects (e.g., OnErgo, 3D Explorer, Minotaur)
+- DeFi/Infrastructure (e.g., Rosen Bridge, DuckPools)
+- Documentation (e.g., Ergo One Stop Shop)
+- Technical Infrastructure (e.g., Browser compatibility, RocksDB)
 """
 
     @staticmethod
     def get_final_summary_prompt(bullets: list, days_covered: int) -> str:
-        """Get the prompt for final summary generation."""
+        """Generate the prompt for compiling a final summary from bullet points."""
         bullet_text = "\n".join(bullets)
-        return f"""Create a comprehensive development update from these bullet points, covering the past {days_covered} days. Format it as follows:
+        return f"""
+# Final Development Summary for Ergo Platform
 
-## Development Updates from the Past {days_covered} Days
-
-[Bullet points with the following format]
-- [Appropriate emoji] **Project Name**: Developer [announced](discord-link) specific technical update, including implementation details, dependencies, and impact. Additional context or technical specifications about the update.
-
-Requirements:
-1. Keep all bullet points with their emojis, ensuring each emoji is relevant to its update
-2. Maintain project names in bold
-3. Keep all Discord links exactly as they are - do not modify any channel_ids or message_ids
-4. Group related updates for the same project into single bullets
-5. Maintain technical accuracy and details, including:
-   - Specific changes and implementations
-   - Technical requirements and dependencies
-   - Impact on users or ecosystem
-   - Names of key contributors
-6. Keep the format consistent with the example
-7. Include all important technical updates
-8. IMPORTANT: Do not modify any Discord links - they must keep their original channel_ids and message_ids
-
-Key Categories to Cover:
-- ErgoHack Projects and Updates
-- DeFi and Infrastructure Development
-- Documentation and Resources
-- Technical Infrastructure Notes
+{bullet_text}
 """
 
     @staticmethod
     def get_reddit_summary_prompt(bullets: list, days_covered: int) -> str:
-        """Get the prompt for Reddit summary generation."""
+        """Generate a Reddit-friendly prompt for an Ergo development update post."""
         bullet_text = "\n".join(bullets)
-        return f"""Create a detailed, Reddit-friendly development update from these bullet points, covering the past {days_covered} days. Format it as follows:
+        return f"""
+# Ergo Ecosystem Update for Reddit - {'Weekly' if days_covered > 5 else 'Daily'} Roundup
 
-# Ergo Ecosystem Update - {'Weekly' if days_covered > 5 else 'Daily'} Roundup
-
-Hello, Ergo community! In this post, we will cover the latest development updates from the Ergo ecosystem over the past {days_covered} days. This roundup includes insights from core development activities, dApp and tool advancements, infrastructure improvements, and community engagement events. Let's dive in!
-
-## Core Development
-[Include core protocol updates, node improvements, and fundamental infrastructure changes]
-
-## dApp & Tool Development
-[Include updates about dApps, tools, bridges, and ecosystem applications]
-
-## Community & Ecosystem
-[Include community initiatives, governance, and broader ecosystem updates]
-
-Bullet points to expand:
 {bullet_text}
-
-Requirements:
-1. Organize content into clear sections with detailed explanations
-2. Maintain all technical details and keep Discord links exactly as they are - do not modify any channel_ids or message_ids
-3. Group related updates together within each section
-4. Keep project names in bold
-5. Add context and explanations to make technical concepts accessible
-6. Use a professional yet engaging tone
-7. Include all important technical details with proper context
-8. End with a call to action encouraging community engagement
-9. IMPORTANT: Do not modify any Discord links - they must keep their original channel_ids and message_ids
-
-Key Categories to Cover:
-- ErgoHack Projects (OnErgo, 3D Explorer, Minotaur, etc.)
-- DeFi/Infrastructure Updates (Rosen Bridge, DuckPools, etc.)
-- Documentation and Resources
-- Technical Infrastructure Notes
-
-For each update, include:
-- Specific technical details and changes
-- Impact or implications of updates
-- Dependencies and requirements
-- Names of key contributors
-- Links to resources when available"""
+"""

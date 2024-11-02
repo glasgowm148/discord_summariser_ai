@@ -1,7 +1,5 @@
 """Main entry point for Discord chat summarization."""
 import os
-import sys
-from datetime import datetime
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 from services.reddit_service import RedditService

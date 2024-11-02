@@ -1,158 +1,139 @@
-"""Test summary generation against expected content."""
+"""Test summary generation and suggest improvements for prompt coverage."""
+
+import os
 import re
-from typing import List, Dict
+import sys
+from typing import Dict, List
+from utils.prompts import SummaryPrompts
+import openai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(dotenv_path="config/.env")
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY environment variable is not set.")
+
+
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 class SummaryValidator:
     def __init__(self):
-        # Define expected categories and their key points
-        self.expected_categories = {
-            "ErgoHack": [
-                {"project": "OnErgo", "keywords": ["educational platform", "DeFi", "event calendar"]},
-                {"project": "3D Explorer", "keywords": ["ergo-3d-explorer.vercel.app"]},
-                {"project": "Minotaur", "keywords": ["implementation", "testing", "video"]},
-                {"project": "Miner Rights Protocol", "keywords": ["whitepaper", "github"]},
-                {"project": "Last Byte Bar", "keywords": ["Token Flight", "prototype"]},
-                {"project": "Satergo", "keywords": ["Offline Vault", "per-wallet passwords", "multi-wallet"]}
-            ],
-            "DeFi/Infrastructure": [
-                {"project": "Rosen Bridge", "keywords": ["P2P", "transaction signing", "24 hours"]},
-                {"project": "DuckPools", "keywords": ["withdrawal", "Vanadium", "JIT"]},
-                {"project": "Gluon", "keywords": ["150% reserve ratio", "Djed", "SigmaUSD"]},
-                {"project": "Bober YF", "keywords": ["ErgoDEX", "whitelist", "Farm ID"]},
-                {"project": "RocksDB", "keywords": ["HDD", "SSD", "performance"]},
-                {"project": "DexYUSD", "keywords": ["code changes", "testing"]},
-                {"project": "CyberVerse", "keywords": ["partnership"]}
-            ],
-            "Documentation": [
-                {"project": "Ergo One Stop Shop", "keywords": ["Medium", "Google Doc", "ErgoMinnow"]}
-            ],
-            "Infrastructure": [
-                {"project": "Vanadium", "keywords": ["JIT", "Javascript", "permission"]}
-            ]
-        }
-
-        # Define expected emoji variety
-        self.emoji_categories = {
-            "development": ["🔧", "⚙️", "🛠️", "🔨"],
-            "launch": ["🚀", "🌟", "✨"],
-            "documentation": ["📚", "📝", "📖"],
-            "infrastructure": ["🏗️", "🔌", "🌐"],
-            "defi": ["💰", "💱", "🏦"],
-            "testing": ["🧪", "🔍", "✅"],
-            "community": ["👥", "🤝", "💬"]
-        }
-
-    def validate_bullet(self, bullet: str) -> Dict[str, List[str]]:
-        """Validate a single bullet point."""
-        issues = {
-            "missing_emoji": [],
-            "missing_project": [],
-            "missing_link": [],
-            "missing_keywords": [],
-            "emoji_variety": []
-        }
-
-        # Check emoji
-        if not re.search(r'^- [^\w\s]', bullet):
-            issues["missing_emoji"].append("Bullet missing emoji")
-        else:
-            emoji = re.search(r'^- ([^\w\s])', bullet).group(1)
-            if emoji in self._get_used_emojis():
-                issues["emoji_variety"].append(f"Emoji {emoji} already used")
-
-        # Check project name
-        if not re.search(r'\*\*([^*]+)\*\*', bullet):
-            issues["missing_project"].append("Missing project name in bold")
-
-        # Check Discord link
-        if not re.search(r'\[([^\]]+)\]\(https://discord\.com/channels/[^)]+\)', bullet):
-            issues["missing_link"].append("Missing Discord link")
-
-        # Check content against expected categories
-        project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
-        if project_match:
-            project_name = project_match.group(1).strip()
-            found_category = False
-            for category, points in self.expected_categories.items():
-                for point in points:
-                    if point["project"] in project_name:
-                        found_category = True
-                        # Check for expected keywords
-                        missing_keywords = []
-                        for keyword in point["keywords"]:
-                            if keyword.lower() not in bullet.lower():
-                                missing_keywords.append(keyword)
-                        if missing_keywords:
-                            issues["missing_keywords"].append(
-                                f"Missing keywords for {project_name}: {', '.join(missing_keywords)}"
-                            )
-                        break
-                if found_category:
-                    break
-
-        return issues
+        # Define expected projects
+        self.expected_projects = [
+            "OnErgo",
+            "3D Explorer",
+            "Minotaur",
+            "Miner Rights Protocol",
+            "Last Byte Bar",
+            "Satergo",
+            "Rosen Bridge",
+            "DuckPools",
+            "Gluon",
+            "Bober YF",
+            "RocksDB",
+            "DexYUSD",
+            "CyberVerse",
+            "Ergo One Stop Shop",
+        ]
 
     def validate_summary(self, bullets: List[str]) -> Dict[str, List[str]]:
-        """Validate the entire summary."""
-        all_issues = {
-            "missing_categories": [],
-            "bullet_issues": {},
-            "overall_issues": []
-        }
+        """Validate the entire summary and suggest prompt improvements."""
+        all_issues = {"missing_projects": [], "bullet_issues": {}, "overall_issues": []}
 
-        # Check for missing categories
+        # Check for missing projects
         covered_projects = set()
         for bullet in bullets:
-            project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
+            project_match = re.search(r"\*\*([^*]+)\*\*", bullet)
             if project_match:
                 covered_projects.add(project_match.group(1).strip())
 
-        # Find missing projects from expected categories
-        for category, points in self.expected_categories.items():
-            for point in points:
-                if not any(point["project"] in proj for proj in covered_projects):
-                    all_issues["missing_categories"].append(
-                        f"Missing coverage for {point['project']} in {category}"
-                    )
+        # Find missing projects from expected projects
+        for project in self.expected_projects:
+            if project not in covered_projects:
+                all_issues["missing_projects"].append(f"Missing coverage for {project}")
 
-        # Validate each bullet
-        for i, bullet in enumerate(bullets):
-            issues = self.validate_bullet(bullet)
-            if any(issues.values()):
-                all_issues["bullet_issues"][f"Bullet {i+1}"] = issues
+        # Suggest improvements to the prompt
+        self.suggest_prompt_improvements(all_issues["missing_projects"])
 
-        # Check overall summary structure
-        if len(bullets) < 5:
-            all_issues["overall_issues"].append("Summary seems too short")
+        # Generate a summary using SummaryPrompts
+        summary_prompt = SummaryPrompts.get_final_summary_prompt(
+            bullets, days_covered=7
+        )
+        recommendations = self.get_gpt_recommendations(summary_prompt, bullets)
+        print("\nGPT-4 Recommendations:")
+        print(recommendations)
+
+        # Print project names in a table with ticks and crosses
+        print("\nProject Coverage Table:")
+        print(f"{'Covered Projects':<30} {'Expected Projects':<30} {'Status':<10}")
+        print("-" * 70)
+        for project in self.expected_projects:
+            covered_project = project if project in covered_projects else ""
+            status = "✔️" if project in covered_projects else "❌"
+            print(f"{covered_project:<30} {project:<30} {status:<10}")
+
+        # Calculate and display coverage statistics
+        total_projects = len(self.expected_projects)
+        covered_count = len(covered_projects)
+        success_rate = (covered_count / total_projects) * 100
+        print(f"\nTotal Projects: {total_projects}")
+        print(f"Covered Projects: {covered_count}")
+        print(f"Success Rate: {success_rate:.2f}%")
 
         return all_issues
 
-    def _get_used_emojis(self) -> set:
-        """Track used emojis to ensure variety."""
-        return set()
-
-    def suggest_improvements(self, issues: Dict[str, List[str]]) -> List[str]:
-        """Generate improvement suggestions based on validation issues."""
-        suggestions = []
-
-        if issues["missing_categories"]:
-            suggestions.append(
-                "Prompt Improvement: Add explicit category requirements to ensure coverage of all key projects"
+    def suggest_prompt_improvements(self, missing_projects: List[str]):
+        """Suggest improvements to the prompt based on missing projects."""
+        if missing_projects:
+            print("\nSuggested Prompt Improvements:")
+            print(
+                "Consider updating the prompt to ensure coverage of the following projects:"
             )
+            for project in missing_projects:
+                print(f"  - {project}")
 
-        if any("missing_emoji" in b for b in issues.get("bullet_issues", {}).values()):
-            suggestions.append(
-                "Prompt Improvement: Emphasize emoji requirement and provide category-specific emoji suggestions"
-            )
+    def get_gpt_recommendations(self, prompt: str, bullets: List[str]) -> str:
+        """Get recommendations from GPT-4 based on the prompt and bullets."""
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": f"Prompt: {prompt}\nBullets: {bullets}"},
+            ],
+        )
+        return response.choices[0].message.content.strip()
 
-        if any("emoji_variety" in b for b in issues.get("bullet_issues", {}).values()):
-            suggestions.append(
-                "Code Improvement: Implement emoji tracking to ensure variety across bullets"
-            )
 
-        if any("missing_keywords" in b for b in issues.get("bullet_issues", {}).values()):
-            suggestions.append(
-                "Prompt Improvement: Add specific keyword requirements for each project category"
-            )
+def main():
+    # Create an instance of SummaryValidator
+    validator = SummaryValidator()
 
-        return suggestions
+    # Example bullet points to validate
+    bullets = [
+        "- 🔧 **OnErgo**: An educational platform with DeFi and event calendar features. [Join us on Discord](https://discord.com/channels/123456789)",
+        "- 🚀 **Rosen Bridge**: P2P transaction signing available 24 hours. [Join us on Discord](https://discord.com/channels/987654321)",
+        "- 🛠️ **Miner Rights Protocol**: Developer [NeuralYogi](https://discord.com/channels/668903786361651200/1153460448214122526/1301947310988595296) shared a link to the whitepaper for the **Miner Rights Protocol**, introducing innovative governance concepts within the mining community. Community feedback is encouraged for further refinement.",
+        "- 🔧 **Cloudflare**: A developer reported issues with Cloudflare's edge servers impacting tunnel connections, but services were restored shortly after, ensuring minimal impact to the community. For more details, see the update [here](https://discord.com/channels/668903786361651200).",
+        "- 🔧 **RocksDB**: Developer Paul highlighted potential issues with **RocksDB**, emphasizing the importance of resolving current dependencies with an alternative version of the library. A review of pull request #2115 is requested as part of ongoing development efforts. For more details, check the discussion [here](https://discord.com/channels/668903786361651200).",
+        "- 🛠️ **Ergo One Stop Shop**: Developer [tulo_ergominnow](https://discord.com/channels/668903786361651200/1295700255807111209/1302057590473232494) confirmed the update of project documentation to Medium, aimed at improving accessibility and engagement.",
+        "- 🔧 **Rosen**: Developer [Paul1938](https://discord.com/channels/668903786361651200/964131671609860126/1301937602445967371) emphasized the need for a community manager and a communication/status page to enhance user trust and improve interaction within the ecosystem.",
+        "- 🔧 **Rosen Bridge**: Ongoing discussions are addressing a P2P issue affecting transaction signing, with developers actively working on a resolution as mentioned by [zargarzadehmoein](https://discord.com/channels/668903786361651200).",
+    ]
+
+    # Validate the summary
+    issues = validator.validate_summary(bullets)
+
+    # Print the validation issues
+    print("\nValidation Issues:")
+    for issue_type, issue_list in issues.items():
+        print(f"{issue_type}:")
+        for issue in issue_list:
+            print(f"  - {issue}")
+
+
+if __name__ == "__main__":
+    main()
