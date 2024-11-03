@@ -1,44 +1,43 @@
 from typing import List
 import humanize
 from datetime import timedelta
-
 class SummaryPrompts:
     @staticmethod
     def get_system_prompt() -> str:
         return """
-        You are an assistant tasked with creating detailed, high-priority technical bullet points from Discord messages.
-        Each message contains a channel ID and message ID that must be used to create Discord message links.
+        You are an assistant tasked with creating high-priority, relevant bullet points from Discord messages, focusing on technical updates, philosophical insights, or notable discussions.
+        Each message includes channel and message IDs required to create accurate Discord message links.
 
         Requirements:
-        1. Choose an emoji that best represents the content of each update.
-        2. Focus on preserving key technical details, including features, code changes, and project specifics.
-        3. IMPORTANT: Each Discord link must follow the format: https://discord.com/channels/668903786361651200/{channel_id}/{message_id}
-        4. Integrate links smoothly into sentences using active, action-oriented verbs.
-        5. For multiple links in a bullet, ensure they flow naturally within a single structured sentence.
-        6. Focus exclusively on technical and development updates.
-        7. Use clear, accurate technical terminology and prioritize precision.
-        8. Note: 'Nodo' by Jossemii is not the same as the Ergo Node. Ensure they are not conflated in the summaries.
+        1. Select an emoji that represents the type of each update (e.g., technical, philosophical, infrastructure).
+        2. Include only critical updates or engaging discussions. Avoid minor preferences, general settings, or routine tech support details.
+        3. Format each Discord link as follows: https://discord.com/channels/668903786361651200/{channel_id}/{message_id}.
+        4. Embed links naturally within sentences, using active verbs and avoiding generic phrases like "[More details]."
+        5. For multiple links in a single bullet, ensure they integrate smoothly within a structured sentence.
+        6. Capture updates with technical, philosophical, or strategic significance while skipping minor configuration preferences or non-impactful discussions.
+        7. Use precise terminology, and avoid making assumptions about user roles (e.g., don’t label someone as "Developer" unless specified).
+        8. Distinguish between 'Nodo' by Jossemii and the Ergo Node, and ensure they're not conflated.
 
-        Example format:
+        Example:
         Given message with channel_id: 123456 and message_id: 789012
-        - 🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation method to enhance security.
+        - 🔧 **Node Update**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation process to enhance network security.
         """
 
     @staticmethod
     def get_user_prompt(chunk: str, current_bullets: int) -> str:
         return f"""
-        Create detailed, action-oriented technical bullet points from the provided Discord messages.
-        Ensure each bullet uses the channel_id and message_id from the message to create a Discord link.
+        Create concise, relevant bullet points from the provided Discord messages, using the channel_id and message_id to create Discord links.
 
         Guidelines:
-        - Focus on essential technical updates, code changes, and implementation specifics.
-        - Construct Discord links using the format: https://discord.com/channels/668903786361651200/{{channel_id}}/{{message_id}}
-        - Embed links within sentences using action verbs and avoid standalone "[More details]" references.
-        - Select fitting emojis for content type and focus on capturing every major update.
-        - Remember: 'Nodo' by Jossemii is distinct from the Ergo Node. Do not conflate them.
+        - Focus on high-priority updates, including technical, philosophical, or strategically important insights. Exclude routine settings preferences, minor configuration mentions, and basic support issues.
+        - Construct Discord links in the format: https://discord.com/channels/668903786361651200/{{channel_id}}/{{message_id}}.
+        - Embed links using active verbs, avoiding generic "[More details]" phrases.
+        - Select fitting emojis to match each update’s focus, capturing only valuable developments or discussions.
+        - Avoid making assumptions about user roles (e.g., "Developer") unless explicitly stated.
+        - Remember: 'Nodo' by Jossemii is not the same as the Ergo Node; keep them distinct.
 
         Current count of valid bullets: {current_bullets}
-        Identify additional high-priority technical updates.
+        Focus on capturing the most relevant, engaging updates.
 
         Content to analyze (includes channel_id and message_id for link generation):
         {chunk}
@@ -49,33 +48,32 @@ class SummaryPrompts:
         return f"""
         Create a comprehensive summary from the provided bullet points, covering the past {days_covered} days.
 
-        Follow this outline exactly:
+        Structure:
 
         ## Updates from the Past {days_covered} Days
 
-        **Retain all significant information** and structure updates to make them as relevant as possible**:
-
+        Include all essential information, presenting each update in its most relevant context.
 
         Requirements:
-        1. **Include every unique detail**—do not summarize away critical information.
-        2. **Group and consolidate** multiple updates about the same project/topic into a single, comprehensive bullet point:
-        - Keep all project details in one combined entry where possible.
-        - Include every relevant link within the consolidated entry.
-        - Capture every unique aspect while avoiding redundancy.
-        - Example: If multiple Satergo updates relate to a single feature, integrate them into one detailed, cohesive bullet point.
-        3. **Preserve Discord links precisely as in the input**.
-        4. Choose suitable emojis based on the update type (development, infrastructure, community, etc.).
-        5. Prioritize clarity and accuracy for every detail.
-        6. Do not create separate entries for updates within the same effort.
-        7. Important: Be careful not to conflate **Nodo by Jossemii** with the **Ergo Node**; these are distinct.
-        8. Important: Remember to include an emoji in each bullet point.
-        9. Highlight insightful discussions, excluding price discussions and support requests.
+        1. **Retain every unique detail** without summarizing away key insights or technical information.
+        2. **Group related updates** on the same project or topic into one bullet point, consolidating distinct details:
+        - Use one entry per project, maintaining all relevant links within it.
+        - For instance, if several Satergo updates relate to offline vault features, integrate them.
+        3. **Retain Discord links exactly as provided**.
+        4. Choose emojis based on the content type (technical, philosophical, infrastructure, etc.).
+        5. Prioritize clarity and retain details without making role assumptions.
+        6. Avoid separate entries for closely related updates.
+        7. Ensure distinction between **Nodo by Jossemii** and **Ergo Node**.
+        8. Include an emoji with each bullet point.
+        9. Focus on insightful discussions, like technical implementations or strategic philosophies, excluding minor preferences or routine support requests.
 
-        Important: This is for Discord, so please try and be concise, but do not lose any information. One bullet point per project with an emoji.
+        This summary should be concise yet comprehensive, capturing each significant update in one bullet point per project or topic.
 
         Input bullets:
         {bullets}
         """
+
+
 
     @staticmethod
     def get_reddit_summary_prompt(bullets: List[str], days_covered: int) -> str:

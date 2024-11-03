@@ -1,17 +1,17 @@
 # services/summary_generator.py
-from typing import List, Optional, Tuple
-import re
 import logging
 import os
+import re
+from typing import List, Optional, Tuple
 
 import pandas as pd
 
 from models.discord_message import DiscordMessage
-from services.bullet_processor import BulletProcessor, BulletPoint
+from services.base_service import BaseService
+from services.bullet_processor import BulletPoint, BulletProcessor
 from services.chunk_processor import ChunkProcessor
 from services.summary_finalizer import SummaryFinalizer
 from utils.logging_config import setup_logging
-from services.base_service import BaseService
 from utils.prompts import SummaryPrompts  # Change to absolute import
 
 
@@ -79,46 +79,52 @@ class SummaryGenerator(BaseService):
 
     def _convert_df_to_messages(self, df: pd.DataFrame) -> List[DiscordMessage]:
         messages = []
-        server_id = os.getenv("DISCORD_SERVER_ID")  # Retrieve the server ID from environment variables
+        server_id = os.getenv(
+            "DISCORD_SERVER_ID"
+        )  # Retrieve the server ID from environment variables
 
         for index, row in df.iterrows():
             try:
                 message = DiscordMessage(
                     server_id=server_id,  # Use the hardcoded server ID
-                    channel_id=row['channel_id'],
-                    channel_category=row['channel_category'],
-                    channel_name=row['channel_name'],
-                    message_id=row['message_id'],
-                    message_content=row['message_content'],
-                    author_name=row['author_name'],
-                    timestamp=row['message_timestamp']  # Use the correct column name
+                    channel_id=row["channel_id"],
+                    channel_category=row["channel_category"],
+                    channel_name=row["channel_name"],
+                    message_id=row["message_id"],
+                    message_content=row["message_content"],
+                    author_name=row["author_name"],
+                    timestamp=row["message_timestamp"],  # Use the correct column name
                     # Do NOT include discord_link here
                 )
                 messages.append(message)
             except Exception as e:
                 # Log the error with row details
-                logging.warning(f"Error converting row {index} to DiscordMessage: {e}. Row data: {row.to_dict()}")
+                logging.warning(
+                    f"Error converting row {index} to DiscordMessage: {e}. Row data: {row.to_dict()}"
+                )
                 continue
 
         if not messages:
             raise ValueError("Too many errors converting DataFrame rows to messages")
-        
+
         return messages
 
     def _create_bullet_point(self, text: str) -> BulletPoint:
         bullet = BulletPoint(content=text)
 
-        if not text.strip().startswith('-'):
+        if not text.strip().startswith("-"):
             bullet.validation_messages.append("Does not start with '-'")
             return bullet
 
         # Extract project name
-        project_match = re.search(r'\*\*([^*]+)\*\*', text)
+        project_match = re.search(r"\*\*([^*]+)\*\*", text)
         if project_match:
             bullet.project_name = project_match.group(1).strip()
 
         # Extract channel_id and message_id from the text
-        discord_match = re.search(r'https://discord\.com/channels/(\d+)/(\d+)/(\d+)', text)
+        discord_match = re.search(
+            r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)", text
+        )
         if discord_match:
             bullet.discord_link = discord_match.group(0)
             bullet.channel_id = discord_match.group(2)  # Channel ID is the second group

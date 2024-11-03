@@ -1,4 +1,5 @@
 """Finalize and format summaries for different platforms."""
+
 import re
 from datetime import datetime
 from pathlib import Path
@@ -6,10 +7,10 @@ from typing import List, Optional, Tuple
 
 from openai import OpenAI
 
-from utils.prompts import SummaryPrompts
+from config.settings import OUTPUT_DIR
 from services.base_service import BaseService
 from services.project_manager import ProjectManager
-from config.settings import OUTPUT_DIR
+from utils.prompts import SummaryPrompts
 
 
 class SummaryFinalizer(BaseService):
@@ -57,7 +58,9 @@ class SummaryFinalizer(BaseService):
             if discord_summary:
                 self._save_to_sent_summaries("Discord", discord_summary)
             if discord_summary_with_cta:
-                self._save_to_sent_summaries("Discord with CTA", discord_summary_with_cta)
+                self._save_to_sent_summaries(
+                    "Discord with CTA", discord_summary_with_cta
+                )
             if reddit_summary:
                 self._save_to_sent_summaries("Reddit", reddit_summary)
 
@@ -85,12 +88,12 @@ class SummaryFinalizer(BaseService):
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a concise Discord summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs."
+                            "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a concise Discord summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs.",
                         },
                         {
                             "role": "user",
                             "content": prompt,
-                        }
+                        },
                     ],
                     temperature=0.6,
                     max_tokens=2000,
@@ -98,14 +101,18 @@ class SummaryFinalizer(BaseService):
 
                 summary_content = final_response.choices[0].message.content
 
-                if not any(line.strip().startswith("-") for line in summary_content.split("\n")):
+                if not any(
+                    line.strip().startswith("-") for line in summary_content.split("\n")
+                ):
                     raise ValueError("Generated summary contains no bullet points")
 
                 final_summary = self._clean_final_summary(summary_content)
                 summary_with_cta = self._add_call_to_action(final_summary)
                 return final_summary, summary_with_cta
             except Exception as e:
-                self.logger.warning(f"Discord summary attempt {attempt + 1}/{max_attempts} failed: {str(e)}")
+                self.logger.warning(
+                    f"Discord summary attempt {attempt + 1}/{max_attempts} failed: {str(e)}"
+                )
                 if attempt == max_attempts - 1:
                     raise
 
@@ -125,19 +132,21 @@ class SummaryFinalizer(BaseService):
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a detailed Reddit summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs."
+                        "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a detailed Reddit summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs.",
                     },
                     {
                         "role": "user",
                         "content": prompt,
-                    }
+                    },
                 ],
                 temperature=0.7,
                 max_tokens=4000,
             )
 
             reddit_content = response.choices[0].message.content
-            if not any(line.strip().startswith("#") for line in reddit_content.split("\n")):
+            if not any(
+                line.strip().startswith("#") for line in reddit_content.split("\n")
+            ):
                 raise ValueError("Generated Reddit content contains no headers")
             cleaned_content = self._clean_reddit_content(reddit_content)
             return cleaned_content
@@ -236,24 +245,24 @@ class SummaryFinalizer(BaseService):
                 if line.startswith("-"):
                     # Keep bold formatting for project names
                     line = line.lstrip("- ").strip()
-                    
+
                     # Convert Discord links to a more readable format
                     line = re.sub(
                         r"\(https://discord\.com/channels/[^)]+\)",
                         "(View full discussion on Discord)",
-                        line
+                        line,
                     )
-                    
+
                     # Add bullet point emoji
                     formatted_lines.append("• " + line)
                 else:
                     formatted_lines.append(line)
 
             formatted_summary = "\n".join(formatted_lines).strip()
-            
+
             # Add Facebook-specific call to action
             formatted_summary += "\n\n🔗 Join our Discord community for real-time updates and discussions: https://discord.gg/ergo-platform-668903786361651200"
-            
+
             return formatted_summary
 
         except Exception as e:
@@ -278,11 +287,11 @@ class SummaryFinalizer(BaseService):
                 if line.startswith("-"):
                     # Keep bold formatting for project names
                     line = line.lstrip("- ").strip()
-                    
+
                     # Remove Discord links but keep the text
                     line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
                     line = re.sub(r"\(https://discord\.com/channels/[^)]+\)", "", line)
-                    
+
                     # Add varied bullet point emojis
                     bullet_emojis = ["💫", "✨", "🔸", "📌"]
                     emoji = bullet_emojis[len(formatted_lines) % len(bullet_emojis)]
@@ -291,14 +300,16 @@ class SummaryFinalizer(BaseService):
                     formatted_lines.append(line)
 
             formatted_summary = "\n".join(formatted_lines).strip()
-            
+
             # Add Instagram-specific hashtags
             hashtags = "\n\n.\n.\n.\n#Ergo #Blockchain #Cryptocurrency #CryptoNews #BlockchainDevelopment #DeFi #CryptoTechnology #Ergonauts #CryptoInnovation #BlockchainInnovation #CryptoUpdates #BlockchainUpdates"
             formatted_summary += hashtags
-            
+
             # Add Instagram-specific call to action
-            formatted_summary += "\n\n💫 Join our Discord community for real-time updates! Link in bio."
-            
+            formatted_summary += (
+                "\n\n💫 Join our Discord community for real-time updates! Link in bio."
+            )
+
             return formatted_summary
 
         except Exception as e:
@@ -341,14 +352,19 @@ class SummaryFinalizer(BaseService):
                 # Ensure Discord links are preserved exactly
                 if "https://discord.com/channels/" in line:
                     # Extract and validate Discord link
-                    match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', line)
+                    match = re.search(
+                        r"https://discord\.com/channels/\d+/\d+/\d+", line
+                    )
                     if match:
                         # Keep the link exactly as is
                         valid_sections.append(line)
                     else:
                         # If link format is invalid, try to fix it
-                        line = re.sub(r'https://discord\.com/channels/[^)\s]+', 
-                                    'https://discord.com/channels/668903786361651200', line)
+                        line = re.sub(
+                            r"https://discord\.com/channels/[^)\s]+",
+                            "https://discord.com/channels/668903786361651200",
+                            line,
+                        )
                         valid_sections.append(line)
                 else:
                     valid_sections.append(line)
@@ -371,15 +387,17 @@ class SummaryFinalizer(BaseService):
             # Ensure output directory exists
             output_dir = Path(OUTPUT_DIR)
             output_dir.mkdir(exist_ok=True)
-            
-            summaries_file = output_dir / 'sent_summaries.md'
+
+            summaries_file = output_dir / "sent_summaries.md"
             current_date = datetime.now().strftime("%Y-%m-%d")
-            formatted_content = f"\n## {format_type} Summary {current_date}\n\n{content}\n"
-            
+            formatted_content = (
+                f"\n## {format_type} Summary {current_date}\n\n{content}\n"
+            )
+
             # Append to sent_summaries.md
-            with open(summaries_file, 'a') as f:
+            with open(summaries_file, "a") as f:
                 f.write(formatted_content)
-            
+
             self.logger.info(f"Saved {format_type} summary to output/sent_summaries.md")
         except Exception as e:
             self.handle_error(e, {"context": f"Saving {format_type} summary"})

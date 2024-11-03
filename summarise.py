@@ -95,7 +95,7 @@ class ChatSummariser(BaseService):
             self.handle_error(e, {"context": "Reading latest summary"})
         return None
 
-    def run(self) -> None:
+    async def run(self) -> None:
         """Execute the main summarization process."""
         self.logger.info("Starting execution...")
 
@@ -119,7 +119,7 @@ class ChatSummariser(BaseService):
                 return
 
             discord_summary, discord_summary_with_cta, reddit_summary = summary_result
-            self._send_to_platforms(discord_summary, discord_summary_with_cta, reddit_summary)
+            await self._send_to_platforms(discord_summary, discord_summary_with_cta, reddit_summary)
 
         except Exception as e:
             self.handle_error(e, {"context": "Main execution"})
@@ -153,7 +153,7 @@ class ChatSummariser(BaseService):
             self.handle_error(e, {"context": "Summary generation"})
             return None
 
-    def _send_to_platforms(self, discord_summary: str, discord_summary_with_cta: str, reddit_summary: str) -> None:
+    async def _send_to_platforms(self, discord_summary: str, discord_summary_with_cta: str, reddit_summary: str) -> None:
         """Send summaries to platforms."""
         try:
             self._send_to_discord(discord_summary)
@@ -161,7 +161,7 @@ class ChatSummariser(BaseService):
                 self.discord_service.send_reddit_summary(reddit_summary)
                 self._post_to_reddit(reddit_summary)
             self._prompt_twitter_post(discord_summary_with_cta)
-            self._prompt_meta_post(discord_summary_with_cta)
+            await self._prompt_meta_post(discord_summary_with_cta)
         except Exception as e:
             self.handle_error(e, {"context": "Platform distribution"})
 
@@ -234,4 +234,9 @@ class ChatSummariser(BaseService):
 if __name__ == "__main__":
     setup_logging()
     summariser = ChatSummariser()
-    summariser.run()
+
+    async def main():
+        await summariser.run()
+
+    import asyncio
+    asyncio.run(main())
