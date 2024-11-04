@@ -1,5 +1,6 @@
 """Main entry point for Discord chat summarization."""
 import os
+import asyncio
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 from services.reddit_service import RedditService
@@ -100,6 +101,9 @@ class ChatSummariser(BaseService):
         self.logger.info("Starting execution...")
 
         try:
+            # Load the data once
+            df, _, days_covered = self.csv_loader.load_latest_csv(OUTPUT_DIR)
+
             # Check for latest summary
             latest_summary = self.get_latest_summary()
             if latest_summary:
@@ -112,58 +116,64 @@ class ChatSummariser(BaseService):
                     print("\nUsing existing summary. Done!")
                     return
 
-            print("\nGenerating new summary...")
-            summary_result = self._generate_summary()
-            if not summary_result:
-                self.logger.error("Summary generation failed")
-                return
+            # Discord Summary
+            if input("\nWould you like to generate a Discord summary? (y/n): ").lower() == 'y':
+                print("\nGenerating Discord summary...")
+                discord_summary, discord_summary_with_cta, _ = self.summary_generator.generate_summary(df, days_covered)
+                if discord_summary:
+                    print("\nGenerated Discord summary:")
+                    print("-" * 50)
+                    print(discord_summary)
+                    print("-" * 50)
+                    if input("\nWould you like to send this summary to Discord? (y/n): ").lower() == 'y':
+                        self._send_to_discord(discord_summary)
+                else:
+                    self.logger.error("Discord summary generation failed")
 
-            discord_summary, discord_summary_with_cta, reddit_summary = summary_result
-            await self._send_to_platforms(discord_summary, discord_summary_with_cta, reddit_summary)
+            # Reddit Summary
+            if input("\nWould you like to generate a Reddit summary? (y/n): ").lower() == 'y':
+                print("\nGenerating Reddit summary...")
+                _, _, reddit_summary = self.summary_generator.generate_summary(df, days_covered)
+                if reddit_summary:
+                    print("\nGenerated Reddit summary:")
+                    print("-" * 50)
+                    print(reddit_summary)
+                    print("-" * 50)
+                    if input("\nWould you like to post this summary to Reddit? (y/n): ").lower() == 'y':
+                        self.discord_service.send_reddit_summary(reddit_summary)
+                        self._post_to_reddit(reddit_summary)
+                else:
+                    self.logger.error("Reddit summary generation failed")
+
+            # Twitter Summary
+            if input("\nWould you like to generate a Twitter summary? (y/n): ").lower() == 'y':
+                print("\nGenerating Twitter summary...")
+                twitter_summary, twitter_summary_with_cta, _ = self.summary_generator.generate_summary(df, days_covered)
+                if twitter_summary:
+                    formatted_summary = self.summary_generator.summary_finalizer.format_for_twitter(twitter_summary_with_cta)
+                    print("\nFormatted Twitter summary:")
+                    print("-" * 50)
+                    print(formatted_summary)
+                    print("-" * 50)
+                    if input("\nWould you like to post this summary to Twitter? (y/n): ").lower() == 'y':
+                        self.twitter_service.send_tweet(formatted_summary)
+                        self.logger.info("Successfully sent to Twitter")
+                else:
+                    self.logger.error("Twitter summary generation failed")
+
+            # Meta Summary
+            if input("\nWould you like to generate a Meta platforms summary? (y/n): ").lower() == 'y':
+                print("\nGenerating Meta summary...")
+                meta_summary, meta_summary_with_cta, _ = self.summary_generator.generate_summary(df, days_covered)
+                if meta_summary:
+                    # Meta service handles its own preview and confirmation
+                    await self._prompt_meta_post(meta_summary_with_cta)
+                else:
+                    self.logger.error("Meta summary generation failed")
 
         except Exception as e:
             self.handle_error(e, {"context": "Main execution"})
             raise
-
-    def _generate_summary(self) -> Optional[Tuple[str, str, str]]:
-        """Generate summary from latest CSV file."""
-        try:
-            df, _, _ = self.csv_loader.load_latest_csv(OUTPUT_DIR)
-            days_covered = self.csv_loader.get_days_covered()
-
-            self.logger.info("Generating summary...")
-            summaries = self.summary_generator.generate_summary(
-                df, days_covered
-            )
-
-            if not summaries:
-                self.logger.error("Summary generation failed")
-                return None
-
-            discord_summary, discord_summary_with_cta, reddit_summary = summaries    
-            if not discord_summary or not discord_summary_with_cta or not reddit_summary:
-                self.logger.error("One or more summaries are missing")
-                return None
-
-            self.logger.info(f"Generated Discord Summary:\n{discord_summary}\n")
-            self.logger.info(f"Generated Reddit Summary:\n{reddit_summary}\n")
-            return discord_summary, discord_summary_with_cta, reddit_summary
-
-        except Exception as e:
-            self.handle_error(e, {"context": "Summary generation"})
-            return None
-
-    async def _send_to_platforms(self, discord_summary: str, discord_summary_with_cta: str, reddit_summary: str) -> None:
-        """Send summaries to platforms."""
-        try:
-            self._send_to_discord(discord_summary)
-            if reddit_summary:
-                self.discord_service.send_reddit_summary(reddit_summary)
-                self._post_to_reddit(reddit_summary)
-            self._prompt_twitter_post(discord_summary_with_cta)
-            await self._prompt_meta_post(discord_summary_with_cta)
-        except Exception as e:
-            self.handle_error(e, {"context": "Platform distribution"})
 
     def _send_to_discord(self, summary: str) -> None:
         """Send summary to Discord."""
@@ -187,40 +197,16 @@ class ChatSummariser(BaseService):
             })
 
     def _post_to_reddit(self, reddit_summary: str) -> None:
-        """Post summary to Reddit if user confirms."""
+        """Post summary to Reddit."""
         try:
-            print("\nWould you like to post this summary to Reddit? (yes/no): ")
-            if input().strip().lower() == 'yes':
-                days = self.csv_loader.get_days_covered()
-                title = f"Ergo Development Update - {days} Day Roundup"
-                if self.reddit_service.post_to_reddit(title, reddit_summary):
-                    self.logger.info("Successfully posted to Reddit")
-                else:
-                    self.logger.error("Failed to post to Reddit")
+            days = self.csv_loader.get_days_covered()
+            title = f"Ergo Development Update - {days} Day Roundup"
+            if self.reddit_service.post_to_reddit(title, reddit_summary):
+                self.logger.info("Successfully posted to Reddit")
+            else:
+                self.logger.error("Failed to post to Reddit")
         except Exception as e:
             self.handle_error(e, {"context": "Reddit posting"})
-
-    def _prompt_twitter_post(self, summary_with_call_to_action: str) -> None:
-        """Prompt user for Twitter posting."""
-        try:
-            # Format summary for Twitter before asking user
-            twitter_summary = self.summary_generator.summary_finalizer.format_for_twitter(
-                summary_with_call_to_action)
-            print("\nFormatted summary for Twitter:")
-            print("-" * 80)
-            print(twitter_summary)
-            print("-" * 80)
-
-            user_choice = input(
-                "\nDo you want to send this summary to Twitter? (yes/no): ").strip().lower()
-            if user_choice == 'yes':
-                self.twitter_service.send_tweet(twitter_summary)
-                self.logger.info("Successfully sent to Twitter")
-            else:
-                self.logger.info("Summary not sent to Twitter")
-
-        except Exception as e:
-            self.handle_error(e, {"context": "Twitter posting"})
 
     async def _prompt_meta_post(self, summary_with_call_to_action: str) -> None:
         """Prompt user for Meta platform posting."""
@@ -234,9 +220,4 @@ class ChatSummariser(BaseService):
 if __name__ == "__main__":
     setup_logging()
     summariser = ChatSummariser()
-
-    async def main():
-        await summariser.run()
-
-    import asyncio
-    asyncio.run(main())
+    asyncio.run(summariser.run())

@@ -3,7 +3,8 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
+from difflib import SequenceMatcher
 
 from openai import OpenAI
 
@@ -42,9 +43,6 @@ class SummaryFinalizer(BaseService):
                 unique_bullets, days_covered
             )
 
-            print(f"Discord Summary: {discord_summary}")
-            print(f"Discord Summary with CTA: {discord_summary_with_cta}")
-
             # Create Reddit summary (detailed version)
             reddit_summary = self._create_reddit_summary(original_bullets, days_covered)
 
@@ -74,47 +72,46 @@ class SummaryFinalizer(BaseService):
         self, unique_bullets: List[str], days_covered: int
     ) -> Tuple[Optional[str], Optional[str]]:
         """Create the condensed Discord summary."""
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            try:
-                project_contexts = self.project_manager.get_all_project_contexts()
-                prompt = f"""Previous project context:
-{project_contexts}
-
-{SummaryPrompts.get_final_summary_prompt(unique_bullets, days_covered)}"""
-
-                final_response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a technical writer for the Ergo blockchain platform. Your task is to create a concise Discord summary. IMPORTANT: When including Discord links, use the exact channel_id and message_id from the original bullet points - do not modify these IDs.",
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        },
-                    ],
-                    temperature=0.6,
-                    max_tokens=2000,
-                )
-
-                summary_content = final_response.choices[0].message.content
-
-                if not any(
-                    line.strip().startswith("-") for line in summary_content.split("\n")
-                ):
-                    raise ValueError("Generated summary contains no bullet points")
-
-                final_summary = self._clean_final_summary(summary_content)
-                summary_with_cta = self._add_call_to_action(final_summary)
-                return final_summary, summary_with_cta
-            except Exception as e:
-                self.logger.warning(
-                    f"Discord summary attempt {attempt + 1}/{max_attempts} failed: {str(e)}"
-                )
-                if attempt == max_attempts - 1:
-                    raise
+        try:
+            # Create section header
+            header = f"## Updates from the Past {days_covered} Days"
+            
+            # Format bullets with proper spacing and ensure no duplicates
+            formatted_bullets = []
+            seen_urls: Set[str] = set()
+            
+            for bullet in unique_bullets:
+                # Extract Discord URL from the bullet
+                url_match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', bullet)
+                if url_match:
+                    url = url_match.group(0)
+                    if url not in seen_urls:
+                        # Preserve any existing emoji
+                        emoji_match = re.match(r'^- ([^\w\s]) ', bullet)
+                        if not emoji_match:
+                            # If no emoji found, let the model add one through the prompt
+                            bullet = f"- {bullet[2:].strip()}"
+                        formatted_bullets.append(bullet)
+                        seen_urls.add(url)
+                else:
+                    # If no URL found, include the bullet preserving any emoji
+                    emoji_match = re.match(r'^- ([^\w\s]) ', bullet)
+                    if not emoji_match:
+                        # If no emoji found, let the model add one through the prompt
+                        bullet = f"- {bullet[2:].strip()}"
+                    formatted_bullets.append(bullet)
+            
+            # Join all parts together
+            final_summary = f"{header}\n" + "\n".join(formatted_bullets)
+            
+            # Create version with call to action
+            summary_with_cta = self._add_call_to_action(final_summary)
+            
+            return final_summary, summary_with_cta
+            
+        except Exception as e:
+            self.handle_error(e, {"context": "Creating Discord summary"})
+            return None, None
 
     def _create_reddit_summary(
         self, original_bullets: List[str], days_covered: int
@@ -317,23 +314,82 @@ class SummaryFinalizer(BaseService):
             return summary
 
     def _remove_duplicate_bullets(self, bullets: List[str]) -> List[str]:
-        """Remove duplicate bullets while preserving the most detailed version."""
-        seen_content = {}
+        """Remove duplicate bullets while preserving the most informative version."""
+        def extract_core_content(bullet: str) -> str:
+            """Extract core content by removing formatting, links, and common variations."""
+            # Remove emojis, links, and formatting
+            content = re.sub(r'^- [^\w\s] ', '- ', bullet)  # Remove emoji but preserve the dash
+            content = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', content)
+            content = re.sub(r'\*\*([^*]+)\*\*', r'\1', content)
+            content = re.sub(r'\(https://discord\.com/channels/[^)]+\)', '', content)
+            
+            # Remove common prefixes and suffixes
+            content = re.sub(r'^- ', '', content)
+            content = re.sub(r'(?i)(read more|explore|view|catch|delve|find out) (?:more |this |the )?(here|discussion|details|conversation|insights?|development)\.?$', '', content)
+            
+            # Normalize whitespace
+            content = ' '.join(content.split())
+            return content.lower().strip()
+
+        def extract_discord_url(bullet: str) -> Optional[str]:
+            """Extract Discord URL from a bullet point."""
+            match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', bullet)
+            return match.group(0) if match else None
+
+        def are_similar(text1: str, text2: str, threshold: float = 0.85) -> bool:
+            """Check if two texts are similar using sequence matcher."""
+            return SequenceMatcher(None, text1, text2).ratio() > threshold
+
+        def get_info_score(bullet: str) -> int:
+            """Calculate an information score for a bullet point."""
+            # More words generally means more information
+            word_count = len(bullet.split())
+            # Presence of specific details increases score
+            has_numbers = 1 if re.search(r'\d', bullet) else 0
+            has_quotes = 2 if '"' in bullet or "'" in bullet else 0
+            has_technical_terms = 2 if re.search(r'(?i)(implementation|development|infrastructure|protocol|system|platform)', bullet) else 0
+            return word_count + has_numbers + has_quotes + has_technical_terms
+
+        unique_bullets = []
+        processed_contents = []
+        seen_urls = set()
 
         for bullet in bullets:
-            # Extract core content without emoji and formatting
-            core_content = re.sub(r"🔧|🚀|📊|🔗|🔐|🌐|📦|🔄|🔒", "", bullet)
-            core_content = re.sub(r"\[.*?\]\(.*?\)", "", core_content)
-            core_content = re.sub(r"\*\*.*?\*\*", "", core_content)
-            core_content = core_content.lower().strip()
+            core_content = extract_core_content(bullet)
+            discord_url = extract_discord_url(bullet)
+            
+            # Skip if empty after processing
+            if not core_content:
+                continue
+            
+            # Skip if URL already seen
+            if discord_url and discord_url in seen_urls:
+                continue
+                
+            # Check if we have a similar bullet
+            is_duplicate = False
+            for idx, existing_content in enumerate(processed_contents):
+                if are_similar(core_content, existing_content):
+                    # If this version is more informative, replace the existing one
+                    if get_info_score(bullet) > get_info_score(unique_bullets[idx]):
+                        # Remove old URL from seen_urls if it exists
+                        old_url = extract_discord_url(unique_bullets[idx])
+                        if old_url:
+                            seen_urls.remove(old_url)
+                        # Add new bullet and URL
+                        unique_bullets[idx] = bullet
+                        if discord_url:
+                            seen_urls.add(discord_url)
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                unique_bullets.append(bullet)
+                processed_contents.append(core_content)
+                if discord_url:
+                    seen_urls.add(discord_url)
 
-            # If we haven't seen this content, or this version is more detailed
-            if core_content not in seen_content or len(bullet) > len(
-                seen_content[core_content]
-            ):
-                seen_content[core_content] = bullet
-
-        return list(seen_content.values())
+        return unique_bullets
 
     def _clean_final_summary(self, summary: str) -> str:
         """Clean and validate the final summary."""
@@ -343,29 +399,23 @@ class SummaryFinalizer(BaseService):
 
         # Process each line
         valid_sections = []
+        seen_urls = set()
+        
         for line in summary.split("\n"):
             line = line.strip()
             if not line:
                 continue
 
-            if line.startswith("#") or line.startswith("-"):
-                # Ensure Discord links are preserved exactly
-                if "https://discord.com/channels/" in line:
-                    # Extract and validate Discord link
-                    match = re.search(
-                        r"https://discord\.com/channels/\d+/\d+/\d+", line
-                    )
-                    if match:
-                        # Keep the link exactly as is
+            if line.startswith("#"):
+                valid_sections.append(line)
+            elif line.startswith("-"):
+                # Check for Discord URL
+                url_match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', line)
+                if url_match:
+                    url = url_match.group(0)
+                    if url not in seen_urls:
                         valid_sections.append(line)
-                    else:
-                        # If link format is invalid, try to fix it
-                        line = re.sub(
-                            r"https://discord\.com/channels/[^)\s]+",
-                            "https://discord.com/channels/668903786361651200",
-                            line,
-                        )
-                        valid_sections.append(line)
+                        seen_urls.add(url)
                 else:
                     valid_sections.append(line)
             else:

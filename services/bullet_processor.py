@@ -246,15 +246,13 @@ class BulletProcessor(BaseService):
             bullet.validation_messages.append("Missing Discord link")
             print("No Discord link found in the bullet.")
 
-        # Remove emojis from the beginning if any
-        bullet.content = re.sub(r'^- [^\w\s]', '- ', bullet.content)
-
         # Validate content length
         if len(text.strip()) <= 50:
             bullet.validation_messages.append("Too short")
             return bullet
 
         bullet.is_valid = True
+        bullet.content = text  # Preserve the original text with emoji
         return bullet
 
     def _validate_discord_link(self, link: str) -> bool:
