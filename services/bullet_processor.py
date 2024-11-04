@@ -30,6 +30,7 @@ class BulletProcessor(BaseService):
         self.link_processor = discord_link_processor
         self.client = openai_client
         self.total_updates = 0
+        self._last_processed_bullets: List[BulletPoint] = []
 
     def initialize(self) -> None:
         """No initialization needed as dependencies are injected."""
@@ -39,6 +40,7 @@ class BulletProcessor(BaseService):
         """Process multiple chunks into updates."""
         collected_updates = []
         self.total_updates = 0
+        self._last_processed_bullets = []  # Reset last processed bullets
 
         self.logger.info("\n" + "=" * 80)
         self.logger.info(f"Starting update generation for {len(chunks)} chunks")
@@ -65,8 +67,17 @@ class BulletProcessor(BaseService):
         if not collected_updates:
             raise ValueError("No valid updates were generated from any chunks")
 
-        # Simply return all collected updates without further processing
-        return collected_updates
+        # Deduplicate updates
+        deduplicated_updates = self._deduplicate_updates(collected_updates)
+
+        # Create BulletPoint objects for the deduplicated updates
+        self._last_processed_bullets = [self._create_update_point(update) for update in deduplicated_updates]
+
+        return deduplicated_updates
+
+    def get_last_processed_bullets(self) -> List[BulletPoint]:
+        """Retrieve the last processed bullets."""
+        return self._last_processed_bullets
 
     def _process_single_chunk(self, chunk: str, chunk_num: int) -> List[str]:
         """Process a single chunk into natural paragraphs."""
@@ -127,6 +138,25 @@ class BulletProcessor(BaseService):
                     raise ValueError(f"Failed to generate valid updates after {MAX_RETRIES} attempts") from None
 
         return chunk_updates
+
+    def _deduplicate_updates(self, updates: List[str]) -> List[str]:
+        """
+        Deduplicate updates while preserving order.
+        
+        Removes exact duplicates and near-duplicates based on normalized text.
+        """
+        # Remove exact duplicates while preserving order
+        unique_updates = []
+        seen = set()
+        for update in updates:
+            # Normalize update for comparison (lowercase, remove extra whitespace)
+            normalized_update = re.sub(r'\s+', ' ', update.lower()).strip()
+            
+            if normalized_update not in seen:
+                unique_updates.append(update)
+                seen.add(normalized_update)
+        
+        return unique_updates
 
     def _extract_updates_from_chunk(self, chunk: str, retry_count: int, current_updates: int) -> List[str]:
         """Extract updates from chunk using OpenAI API."""

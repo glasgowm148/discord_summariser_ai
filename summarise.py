@@ -1,7 +1,7 @@
 """Main entry point for Discord chat summarization."""
 import os
 import asyncio
-from typing import Optional, Tuple
+from typing import Optional, List, Tuple
 from dotenv import load_dotenv
 from services.reddit_service import RedditService
 from pathlib import Path
@@ -16,6 +16,7 @@ from services.csv_loader import CsvLoaderService
 from services.summary_generator import SummaryGenerator
 from services.discord_service import DiscordService
 from services.twitter_service import TwitterService
+from services.bullet_processor import BulletPoint
 from services.meta_service import MetaService
 from utils.logging_config import setup_logging
 
@@ -116,41 +117,57 @@ class ChatSummariser(BaseService):
                     print("\nUsing existing summary. Done!")
                     return
 
+            # Generate bullets first
+            print("\nGenerating initial summary bullets...")
+            discord_summary, discord_summary_with_cta, reddit_summary = self.summary_generator.generate_summary(df, days_covered)
+            
+            if not discord_summary or not reddit_summary:
+                self.logger.error("Failed to generate initial summary")
+                return
+
+            # Store the generated bullets for reuse
+            generated_bullets = self.summary_generator.bullet_processor.get_last_processed_bullets()
+
+            # Confirm bullet generation
+            print("\nGenerated Summary Bullets:")
+            print("-" * 50)
+            for bullet in generated_bullets:
+                print(bullet.content)
+            print("-" * 50)
+
             # Discord Summary
-            if input("\nWould you like to generate a Discord summary? (y/n): ").lower() == 'y':
-                print("\nGenerating Discord summary...")
-                discord_summary, discord_summary_with_cta, _ = self.summary_generator.generate_summary(df, days_covered)
-                if discord_summary:
-                    print("\nGenerated Discord summary:")
-                    print("-" * 50)
-                    print(discord_summary)
-                    print("-" * 50)
-                    if input("\nWould you like to send this summary to Discord? (y/n): ").lower() == 'y':
-                        self._send_to_discord(discord_summary)
-                else:
-                    self.logger.error("Discord summary generation failed")
+            if input("\nWould you like to generate a Discord summary from these bullets? (y/n): ").lower() == 'y':
+                print("\nDiscord Summary:")
+                print("-" * 50)
+                print(discord_summary)
+                print("-" * 50)
+                if input("\nWould you like to send this summary to Discord? (y/n): ").lower() == 'y':
+                    self._send_to_discord(discord_summary)
 
             # Reddit Summary
-            if input("\nWould you like to generate a Reddit summary? (y/n): ").lower() == 'y':
-                print("\nGenerating Reddit summary...")
-                _, _, reddit_summary = self.summary_generator.generate_summary(df, days_covered)
-                if reddit_summary:
-                    print("\nGenerated Reddit summary:")
-                    print("-" * 50)
-                    print(reddit_summary)
-                    print("-" * 50)
-                    if input("\nWould you like to post this summary to Reddit? (y/n): ").lower() == 'y':
-                        self.discord_service.send_reddit_summary(reddit_summary)
-                        self._post_to_reddit(reddit_summary)
-                else:
-                    self.logger.error("Reddit summary generation failed")
+            if input("\nWould you like to generate a Reddit summary from these bullets? (y/n): ").lower() == 'y':
+                print("\nReddit Summary:")
+                print("-" * 50)
+                print(reddit_summary)
+                print("-" * 50)
+                if input("\nWould you like to post this summary to Reddit? (y/n): ").lower() == 'y':
+                    self.discord_service.send_reddit_summary(reddit_summary)
+                    self._post_to_reddit(reddit_summary)
 
             # Twitter Summary
-            if input("\nWould you like to generate a Twitter summary? (y/n): ").lower() == 'y':
-                print("\nGenerating Twitter summary...")
-                twitter_summary, twitter_summary_with_cta, _ = self.summary_generator.generate_summary(df, days_covered)
+            if input("\nWould you like to generate a Twitter summary from these bullets? (y/n): ").lower() == 'y':
+                # Convert bullet points to their string content
+                bullet_strings = [bullet.content for bullet in generated_bullets]
+                
+                # Generate Twitter summary
+                twitter_summary, twitter_summary_with_cta, _ = self.summary_generator.summary_finalizer.create_final_summary(
+                    bullet_strings, days_covered
+                )
+                
                 if twitter_summary:
-                    formatted_summary = self.summary_generator.summary_finalizer.format_for_twitter(twitter_summary_with_cta)
+                    formatted_summary = self.summary_generator.summary_finalizer.format_for_social_media(
+                        twitter_summary_with_cta, 'twitter'
+                    )
                     print("\nFormatted Twitter summary:")
                     print("-" * 50)
                     print(formatted_summary)
@@ -162,9 +179,15 @@ class ChatSummariser(BaseService):
                     self.logger.error("Twitter summary generation failed")
 
             # Meta Summary
-            if input("\nWould you like to generate a Meta platforms summary? (y/n): ").lower() == 'y':
-                print("\nGenerating Meta summary...")
-                meta_summary, meta_summary_with_cta, _ = self.summary_generator.generate_summary(df, days_covered)
+            if input("\nWould you like to generate a Meta platforms summary from these bullets? (y/n): ").lower() == 'y':
+                # Convert bullet points to their string content
+                bullet_strings = [bullet.content for bullet in generated_bullets]
+                
+                # Generate Meta summary
+                meta_summary, meta_summary_with_cta, _ = self.summary_generator.summary_finalizer.create_final_summary(
+                    bullet_strings, days_covered
+                )
+                
                 if meta_summary:
                     # Meta service handles its own preview and confirmation
                     await self._prompt_meta_post(meta_summary_with_cta)

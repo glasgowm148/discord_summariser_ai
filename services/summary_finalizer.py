@@ -32,7 +32,7 @@ class SummaryFinalizer(BaseService):
             raise
 
     def create_final_summary(
-        self, updates: List[str], days_covered: int
+        self, updates: List[str], days_covered: int, hackmd_url: Optional[str] = None
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Create summaries for different platforms."""
         try:
@@ -47,7 +47,7 @@ class SummaryFinalizer(BaseService):
             
             # Create Discord summary (condensed version)
             discord_summary, discord_summary_with_cta = self._create_discord_summary(
-                unique_updates, days_covered
+                unique_updates, days_covered, hackmd_url
             )
 
             # Create Reddit summary (detailed version)
@@ -69,7 +69,7 @@ class SummaryFinalizer(BaseService):
             return None, None, None
 
     def _create_discord_summary(
-        self, unique_updates: List[str], days_covered: int
+        self, unique_updates: List[str], days_covered: int, hackmd_url: Optional[str] = None
     ) -> Tuple[Optional[str], Optional[str]]:
         """Create the condensed Discord summary."""
         try:
@@ -81,6 +81,10 @@ class SummaryFinalizer(BaseService):
             
             # Clean up formatting
             final_summary = ContentFormatter.clean_formatting(final_summary)
+            
+            # Add HackMD link if available
+            if hackmd_url:
+                final_summary += f"\n\n[Full Summary on HackMD]({hackmd_url})"
             
             # Create version with call to action
             summary_with_cta = ContentFormatter.add_call_to_action(final_summary)

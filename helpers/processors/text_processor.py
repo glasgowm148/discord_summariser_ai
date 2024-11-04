@@ -70,7 +70,9 @@ class TextProcessor:
     def is_meta_commentary(text: str) -> bool:
         """Check if text is meta-commentary."""
         return bool(re.search(
-            r'(?i)(these updates cover|this discussion highlights|for more|further details)',
+            r'(?i)(these updates cover|this discussion highlights|for more|further details|'
+            r'provide valuable insights|reflecting both|ongoing discussions and developments|'
+            r'community engagement|technical intricacies)',
             text
         ))
 

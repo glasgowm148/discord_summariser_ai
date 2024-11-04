@@ -1,49 +1,75 @@
 # services/summary_generator.py
 import logging
 import os
-import re
 from typing import List, Optional, Tuple
 
 import pandas as pd
+from openai import OpenAI
 
 from models.discord_message import DiscordMessage
 from services.base_service import BaseService
 from services.bullet_processor import BulletPoint, BulletProcessor
 from services.chunk_processor import ChunkProcessor
 from services.summary_finalizer import SummaryFinalizer
+from services.hackmd_service import HackMDService
+from services.discord_service import DiscordService
 from utils.logging_config import setup_logging
-from utils.prompts import SummaryPrompts  # Change to absolute import
 
 
 class SummaryGenerator(BaseService):
-    SERVER_ID = "668903786361651200"  # Replace with your actual server ID
+    MAX_DISCORD_BULLET_POINTS = 5  # Maximum number of bullet points for Discord output
 
     def __init__(
         self, 
         api_key: str, 
         chunk_processor: Optional[ChunkProcessor] = None,
         bullet_processor: Optional[BulletProcessor] = None,
-        summary_finalizer: Optional[SummaryFinalizer] = None
+        summary_finalizer: Optional[SummaryFinalizer] = None,
+        hackmd_service: Optional[HackMDService] = None,
+        discord_service: Optional[DiscordService] = None,
+        openai_client: Optional[OpenAI] = None,
+        post_to_hackmd: bool = False
     ):
-        self.logger = setup_logging()
+        """Initialize with required dependencies."""
+        super().__init__()  # Call parent class initializer
         
-        # Use provided dependencies or create default ones
-        self.chunk_processor = chunk_processor or ChunkProcessor()
+        # Use provided dependencies or create default ones through service factory
+        from services.service_factory import ServiceFactory
+        factory = ServiceFactory.get_instance()
         
-        # If no bullet_processor is provided, create a default one
-        if bullet_processor is None:
-            from services.service_factory import ServiceFactory
-            factory = ServiceFactory.get_instance()
-            self.bullet_processor = factory.create_bullet_processor(api_key, self.SERVER_ID)
-        else:
-            self.bullet_processor = bullet_processor
+        self.chunk_processor = chunk_processor or factory.create_chunk_processor()
+        self.bullet_processor = bullet_processor or factory.create_bullet_processor(api_key, os.getenv('DISCORD_SERVER_ID', ''))
+        self.summary_finalizer = summary_finalizer or factory.create_summary_finalizer(api_key)
+        self.hackmd_service = hackmd_service or factory.create_hackmd_service()
+        self.discord_service = discord_service or factory.create_discord_service()
+        self.openai_client = openai_client or OpenAI(api_key=api_key)
+        self.post_to_hackmd = post_to_hackmd
         
-        self.summary_finalizer = summary_finalizer or SummaryFinalizer(api_key)
+        # Call initialize method
+        self.initialize()
 
-    def initialize(self):
-        # Implement the initialization logic here
-        self.logger.info("SummaryGenerator initialized")
-        # Any other setup code can go here
+    def initialize(self) -> None:
+        """
+        Initialize service-specific resources.
+        
+        This method is required by the BaseService abstract class.
+        For SummaryGenerator, we'll do basic logging and validation.
+        """
+        self.logger.info("Initializing SummaryGenerator")
+        
+        # Validate that required dependencies are set
+        if not all([
+            self.chunk_processor, 
+            self.bullet_processor, 
+            self.summary_finalizer, 
+            self.hackmd_service, 
+            self.discord_service,
+            self.openai_client
+        ]):
+            self.handle_error(
+                ValueError("One or more required dependencies are not initialized"),
+                {"context": "SummaryGenerator initialization"}
+            )
 
     def generate_summary(
         self, df: pd.DataFrame, days_covered: int
@@ -67,15 +93,34 @@ class SummaryGenerator(BaseService):
             self.logger.info(f"Generated {len(chunks)} chunks")
 
             self.logger.info("Processing chunks to generate bullets...")
-            bullets = self.bullet_processor.process_chunks(chunks)
-            if not bullets:
+            all_bullets = self.bullet_processor.process_chunks(chunks)
+            if not all_bullets:
                 self.logger.error("No bullets were generated from chunks")
                 return None, None, None
-            self.logger.info(f"Generated {len(bullets)} bullets")
+            self.logger.info(f"Generated {len(all_bullets)} bullets")
+
+            # Curate the most significant 5 points using GPT-4o
+            discord_bullets = self._curate_most_significant_points(all_bullets)
+
+            # Create HackMD note for full summary if enabled
+            hackmd_url = None
+            if self.post_to_hackmd:
+                hackmd_url = self.hackmd_service.create_note(
+                    title=f"Discord Summary - Last {days_covered} Days",
+                    content="\n".join(f"- {bullet}" for bullet in all_bullets)
+                )
+
+                if not hackmd_url:
+                    self.logger.warning("Failed to create HackMD note.")
 
             self.logger.info("Creating final summaries...")
+            # Use curated bullets for Discord summary
             discord_summary, discord_summary_with_cta, reddit_summary = (
-                self.summary_finalizer.create_final_summary(bullets, days_covered)
+                self.summary_finalizer.create_final_summary(
+                    discord_bullets, 
+                    days_covered, 
+                    hackmd_url  # Pass HackMD URL to be included in summary
+                )
             )
 
             if not discord_summary or not discord_summary_with_cta:
@@ -90,33 +135,85 @@ class SummaryGenerator(BaseService):
             return discord_summary, discord_summary_with_cta, reddit_summary
 
         except Exception as e:
-            self.logger.error(f"Error generating summary: {e}", exc_info=True)
+            self.handle_error(e, {"context": "Summary generation"})
             return None, None, None
+
+    def _curate_most_significant_points(self, bullets: List[str]) -> List[str]:
+        """
+        Use GPT-4o to select the 5 most significant points while maintaining syntax.
+        
+        :param bullets: List of all generated bullet points
+        :return: List of 5 most significant bullet points
+        """
+        try:
+            # Prepare the prompt for point curation
+            prompt = (
+                "You are an expert at summarizing complex information. From the following list of updates, "
+                "select the TOP 5 MOST SIGNIFICANT points. Consider:\n"
+                "- Overall impact and importance\n"
+                "- Uniqueness of the information\n"
+                "- Potential long-term significance\n"
+                "- Diversity of topics\n\n"
+                "Maintain the EXACT original formatting of each bullet point. Do not modify the syntax, "
+                "emojis, or structure. Just select the most crucial 5.\n\n"
+                "Here are all the points:\n" + 
+                "\n".join(f"- {bullet}" for bullet in bullets)
+            )
+
+            # Call GPT-4o to curate points
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are an expert summarization assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=4000,
+                temperature=0.2  # Low temperature for consistent selection
+            )
+
+            # Parse the AI's selected points
+            selected_summary = response.choices[0].message.content
+            selected_updates = [
+                line.strip().lstrip('- ') 
+                for line in selected_summary.split('\n') 
+                if line.strip().startswith('- ')
+            ]
+
+            # Ensure we have exactly 5 points or fall back to first 5
+            selected_updates = selected_updates[:5] if len(selected_updates) >= 5 else bullets[:5]
+
+            return selected_updates
+
+        except Exception as e:
+            self.logger.warning(f"Failed to curate points with AI: {e}")
+            # Fallback to first 5 points if AI curation fails
+            return bullets[:5]
 
     def _convert_df_to_messages(self, df: pd.DataFrame) -> List[DiscordMessage]:
         messages = []
-        server_id = os.getenv(
-            "DISCORD_SERVER_ID"
-        )  # Retrieve the server ID from environment variables
+        server_id = os.getenv("DISCORD_SERVER_ID")
 
         for index, row in df.iterrows():
             try:
                 message = DiscordMessage(
-                    server_id=server_id,  # Use the hardcoded server ID
+                    server_id=server_id,
                     channel_id=row["channel_id"],
                     channel_category=row["channel_category"],
                     channel_name=row["channel_name"],
                     message_id=row["message_id"],
                     message_content=row["message_content"],
                     author_name=row["author_name"],
-                    timestamp=row["message_timestamp"],  # Use the correct column name
-                    # Do NOT include discord_link here
+                    timestamp=row["message_timestamp"],
                 )
                 messages.append(message)
             except Exception as e:
-                # Log the error with row details
-                logging.warning(
-                    f"Error converting row {index} to DiscordMessage: {e}. Row data: {row.to_dict()}"
+                self.handle_error(
+                    e, 
+                    {
+                        "context": "Converting DataFrame row to DiscordMessage", 
+                        "row_index": index, 
+                        "row_data": row.to_dict()
+                    }
                 )
                 continue
 
@@ -124,43 +221,3 @@ class SummaryGenerator(BaseService):
             raise ValueError("Too many errors converting DataFrame rows to messages")
 
         return messages
-
-    def _create_bullet_point(self, text: str) -> BulletPoint:
-        bullet = BulletPoint(content=text)
-
-        if not text.strip().startswith("-"):
-            bullet.validation_messages.append("Does not start with '-'")
-            return bullet
-
-        # Extract project name
-        project_match = re.search(r"\*\*([^*]+)\*\*", text)
-        if project_match:
-            bullet.project_name = project_match.group(1).strip()
-
-        # Extract channel_id and message_id from the text
-        discord_match = re.search(
-            r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)", text
-        )
-        if discord_match:
-            bullet.discord_link = discord_match.group(0)
-            bullet.channel_id = discord_match.group(2)  # Channel ID is the second group
-            bullet.message_id = discord_match.group(3)  # Message ID is the third group
-
-            print(f"Extracted Discord Link: {bullet.discord_link}")
-            print(f"Extracted Channel ID: {bullet.channel_id}")
-            print(f"Extracted Message ID: {bullet.message_id}")
-
-            # Validate the extracted link
-            if not self._validate_discord_link(bullet.discord_link):
-                bullet.validation_messages.append("Invalid Discord link format")
-                print("Invalid Discord link detected.")
-                return bullet
-        else:
-            bullet.validation_messages.append("Missing Discord link")
-            print("No Discord link found in the bullet.")
-
-        # Use the correct author name in the bullet point
-        bullet.author_name = self.author_name  # Ensure this is set correctly
-
-        bullet.is_valid = True
-        return bullet

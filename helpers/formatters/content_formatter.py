@@ -24,7 +24,7 @@ class ContentFormatter:
     def format_discord_summary(header: str, updates: List[str]) -> str:
         """Format the complete Discord summary."""
         formatted_updates = [ContentFormatter.format_bullet_point(update) for update in updates]
-        return f"{header}\n\n" + "\n\n".join(formatted_updates)
+        return f"{header}\n" + "\n".join(formatted_updates)
 
     @staticmethod
     def format_project_name(name: str) -> str:
