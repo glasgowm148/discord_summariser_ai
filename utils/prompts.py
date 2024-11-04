@@ -15,12 +15,28 @@ class SummaryPrompts:
         4. Embed links naturally within sentences, using active verbs and avoiding generic phrases like "[More details]."
         5. For multiple links in a single bullet, ensure they integrate smoothly within a structured sentence.
         6. Capture updates with technical, philosophical, or strategic significance while skipping minor configuration preferences or non-impactful discussions.
-        7. Use precise terminology, and avoid making assumptions about user roles (e.g., don’t label someone as "Developer" unless specified).
+        7. Use precise terminology, and avoid making assumptions about user roles (e.g., don't label someone as "Developer" unless specified).
         8. Distinguish between 'Nodo' by Jossemii and the Ergo Node, and ensure they're not conflated.
+        9. When handling messages from GroupAnonymousBot:
+           - These are bridged messages from project channels
+           - Attribute the message to the project/team rather than "GroupAnonymousBot"
+           - Use the channel context to determine the correct project attribution
+        10. Always provide full context for technical discussions:
+           - Include relevant background information
+           - Explain the significance of updates
+           - Connect related points across messages
+           - Maintain technical accuracy while being clear
+        11. Keep project names concise and simple:
+           - Use the base project name without additional descriptors
+           - Examples:
+             * "ErgoPay" (not "Ergopay Implementation" or "ErgoPay Updates")
+             * "Rosen" (not "Rosen Liquidity Remarks" or "Rosen Bridge Update")
+             * "duckpools" (not "Duckpools v2 Improvements" or "Duckpools Protocol")
+           - Only include version numbers or additional context in the description, not the project name
 
         Example:
         Given message with channel_id: 123456 and message_id: 789012
-        - 🔧 **Node Update**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation process to enhance network security.
+        - 🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation process to enhance network security.
         """
 
     @staticmethod
@@ -32,9 +48,17 @@ class SummaryPrompts:
         - Focus on high-priority updates, including technical, philosophical, or strategically important insights. Exclude routine settings preferences, minor configuration mentions, and basic support issues.
         - Construct Discord links in the format: https://discord.com/channels/668903786361651200/{{channel_id}}/{{message_id}}.
         - Embed links using active verbs, avoiding generic "[More details]" phrases.
-        - Select fitting emojis to match each update’s focus, capturing only valuable developments or discussions.
+        - Select fitting emojis to match each update's focus, capturing only valuable developments or discussions.
         - Avoid making assumptions about user roles (e.g., "Developer") unless explicitly stated.
         - Remember: 'Nodo' by Jossemii is not the same as the Ergo Node; keep them distinct.
+        - For GroupAnonymousBot messages:
+          * Attribute to the relevant project/team based on the channel
+          * Provide full context of the project's update or announcement
+          * Maintain the original technical details while making the source clear
+        - Keep project names concise:
+          * Use base names without descriptors (e.g., "ErgoPay" not "ErgoPay Implementation")
+          * Put version info and context in the description, not the project name
+          * Maintain consistent capitalization (e.g., "duckpools" not "Duckpools")
 
         Current count of valid bullets: {current_bullets}
         Focus on capturing the most relevant, engaging updates.
@@ -66,6 +90,17 @@ class SummaryPrompts:
         7. Ensure distinction between **Nodo by Jossemii** and **Ergo Node**.
         8. Include an emoji with each bullet point.
         9. Focus on insightful discussions, like technical implementations or strategic philosophies, excluding minor preferences or routine support requests.
+        10. For project updates (especially from GroupAnonymousBot):
+            - Attribute to the project/team rather than the bot
+            - Provide complete context of the update
+            - Maintain technical accuracy while being clear about the source
+        11. Keep project names concise and consistent:
+            - Use base project names without descriptors
+            - Include version numbers and context in descriptions
+            - Examples:
+              * "**ErgoPay**" not "**ErgoPay Implementation**"
+              * "**Rosen**" not "**Rosen Liquidity Remarks**"
+              * "**duckpools**" not "**Duckpools v2**"
 
         This summary should be concise yet comprehensive, capturing each significant update in one bullet point per project or topic.
 
@@ -90,22 +125,22 @@ class SummaryPrompts:
         Requirements:
         1. Begin with a title in this format:
         **# Ergo Development Update - {days_covered} Day Roundup**
-        2. Start with a brief introductory paragraph explaining the post’s scope.
+        2. Start with a brief introductory paragraph explaining the post's scope.
         3. Structure the content into clear sections with bullet points for each detailed update:
         - ## Core Development
-            - **Project Name**: Brief summary of the update. [Discussed here](#)
+            - **Project**: Brief summary of the update. [Discussed here](#)
         - ## dApp & Tool Development
-            - **Tool Name**: Update details. [Discussed here](#)
+            - **Tool**: Update details. [Discussed here](#)
         - ## Infrastructure & Integration
-            - **Infrastructure Component**: Update details. [Discussed here](#)
+            - **Component**: Update details. [Discussed here](#)
         - ## Community & Ecosystem
-            - **Community Event**: Summary of the event. [Discussed here](#)
+            - **Event**: Summary of the event. [Discussed here](#)
 
         4. For each update, include:
         - **All unique technical details** without omitting key points.
         - Expand abbreviations and technical terms where helpful.
         - Consolidate related updates on the same topic into a single, clear bullet point.
-        - **Bold all project names** and use `[discussed here]` for links.
+        - **Bold project names** (keeping them concise) and integrate links naturally.
         - Add context for newer community members.
 
         5. Writing style:
@@ -116,6 +151,14 @@ class SummaryPrompts:
         6. Notes:
         - This version should be highly comprehensive, with all technical details included.
         - Do not conflate **Nodo by Jossemii** with the **Ergo Node**.
+        - For project updates (from GroupAnonymousBot or other sources):
+          * Attribute to the project/team rather than the messenger
+          * Provide complete context and significance
+          * Maintain technical accuracy while being clear about the source
+        - Keep project names concise:
+          * Use base names (e.g., "**ErgoPay**" not "**ErgoPay Implementation**")
+          * Put version info in descriptions
+          * Maintain consistent capitalization
 
         Original detailed bullets to expand from:
         {bullets}

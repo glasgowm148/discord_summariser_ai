@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict, Set
 
 from openai import OpenAI
 
@@ -22,10 +22,11 @@ class BulletPoint:
     validation_messages: List[str] = field(default_factory=list)
     channel_id: str = ""
     message_id: str = ""
+    channel_name: str = ""  # Added to track channel context
 
 
 class BulletProcessor(BaseService):
-    SERVER_ID = "668903786361651200"  # Ergo Discord server ID
+    SERVER_ID = "668903786361651200"  # Discord server ID
 
     def __init__(self, api_key: str):
         super().__init__()
@@ -40,6 +41,17 @@ class BulletProcessor(BaseService):
         except Exception as e:
             self.handle_error(e, {"context": "OpenAI client initialization"})
             raise
+
+    def _simplify_project_name(self, project_name: str) -> str:
+        """Simplify and standardize project names."""
+        # Convert to lowercase for comparison
+        name_lower = project_name.lower()
+        
+        # Remove common suffixes and descriptors
+        name_lower = re.sub(r'\s+(?:implementation|update|development|improvements?|remarks|protocol|v\d+|version\s+\d+|integration)s?\s*$', '', name_lower)
+        
+        # Return original first word with original capitalization
+        return project_name.split()[0]
 
     def process_chunks(self, chunks: List[str]) -> List[str]:
         """Process multiple chunks into bullet points."""
@@ -61,9 +73,7 @@ class BulletProcessor(BaseService):
                     collected_bullets.extend(chunk_bullets)
                     self.total_bullets = len(collected_bullets)
                     self.logger.info(f"\n✅ Chunk {i} Complete")
-                    self.logger.info(
-                        f"   Bullets from this chunk: {len(chunk_bullets)}"
-                    )
+                    self.logger.info(f"   Bullets from this chunk: {len(chunk_bullets)}")
                     self.logger.info(f"   Total bullets so far: {self.total_bullets}")
                     self.logger.info("-" * 80)
             except Exception as e:
@@ -74,15 +84,17 @@ class BulletProcessor(BaseService):
             raise ValueError("No valid bullets were generated from any chunks")
 
         self.logger.info("\n" + "=" * 80)
-        self.logger.info(
-            f"Bullet Generation Complete - Total Valid Bullets: {self.total_bullets}"
-        )
+        self.logger.info(f"Bullet Generation Complete - Total Valid Bullets: {self.total_bullets}")
         self.logger.info("=" * 80 + "\n")
 
         return self._post_process_bullets(collected_bullets)
 
     def _optimize_chunk_size(self, chunk: str) -> str:
         """Optimize chunk size for GPT-4 processing."""
+        # Extract channel name if present
+        channel_match = re.search(r'Channel:\s*([^\n]+)', chunk)
+        channel_name = channel_match.group(1) if channel_match else ""
+        
         # Split chunk into messages if it contains message separators
         messages = chunk.split("---\n")
 
@@ -93,14 +105,15 @@ class BulletProcessor(BaseService):
         # Process messages in reverse chronological order (most recent first)
         optimized_messages = []
         current_length = 0
-        target_length = (
-            100000  # Target length in characters (conservative estimate for tokens)
-        )
+        target_length = 100000  # Target length in characters (conservative estimate for tokens)
 
         for msg in messages:
             msg_length = len(msg) + 4  # Add 4 for the separator
             if current_length + msg_length > target_length:
                 break
+            # Add channel context if available
+            if channel_name and "Channel:" not in msg:
+                msg = f"Channel: {channel_name}\n{msg}"
             optimized_messages.append(msg)
             current_length += msg_length
 
@@ -116,17 +129,11 @@ class BulletProcessor(BaseService):
 
         while retry_count < MAX_RETRIES and len(chunk_bullets) < MIN_BULLETS_PER_CHUNK:
             try:
-                self.logger.info(
-                    f"\n🔄 Attempt {retry_count + 1} for Chunk {chunk_num}"
-                )
-                self.logger.info(
-                    f"   Current bullet count: {len(chunk_bullets)}/{MIN_BULLETS_PER_CHUNK} minimum"
-                )
+                self.logger.info(f"\n🔄 Attempt {retry_count + 1} for Chunk {chunk_num}")
+                self.logger.info(f"   Current bullet count: {len(chunk_bullets)}/{MIN_BULLETS_PER_CHUNK} minimum")
                 self.logger.info("   " + "-" * 40)
 
-                new_bullets = self._extract_bullets_from_chunk(
-                    chunk, retry_count, len(chunk_bullets)
-                )
+                new_bullets = self._extract_bullets_from_chunk(chunk, retry_count, len(chunk_bullets))
                 if not new_bullets:
                     self.logger.warning("   ⚠️  No bullets returned from API")
                     retry_count += 1
@@ -154,39 +161,26 @@ class BulletProcessor(BaseService):
                             if fixed_bullet:
                                 valid_new_bullets.append(fixed_bullet)
                             else:
-                                self.logger.warning(
-                                    f"   ⚠️  Could not fix Discord link: {bullet.discord_link}"
-                                )
+                                self.logger.warning(f"   ⚠️  Could not fix Discord link: {bullet.discord_link}")
 
                 if valid_new_bullets:
-                    self.logger.info(
-                        f"\n✨ Valid bullets this attempt: {len(valid_new_bullets)}/{len(new_bullets)}"
-                    )
+                    self.logger.info(f"\n✨ Valid bullets this attempt: {len(valid_new_bullets)}/{len(new_bullets)}")
                     chunk_bullets.extend(valid_new_bullets)
-                    self.logger.info(
-                        f"📊 Progress: {len(chunk_bullets)}/{MIN_BULLETS_PER_CHUNK} minimum bullets"
-                    )
+                    self.logger.info(f"📊 Progress: {len(chunk_bullets)}/{MIN_BULLETS_PER_CHUNK} minimum bullets")
                 else:
                     self.logger.info("\n⚠️  No valid bullets in this attempt")
 
                 retry_count += 1
 
             except Exception as e:
-                self.handle_error(
-                    e,
-                    {"retry_count": retry_count, "current_bullets": len(chunk_bullets)},
-                )
+                self.handle_error(e, {"retry_count": retry_count, "current_bullets": len(chunk_bullets)})
                 retry_count += 1
                 if retry_count >= MAX_RETRIES and not chunk_bullets:
-                    raise ValueError(
-                        f"Failed to generate valid bullets after {MAX_RETRIES} attempts"
-                    ) from None
+                    raise ValueError(f"Failed to generate valid bullets after {MAX_RETRIES} attempts") from None
 
         return chunk_bullets
 
-    def _extract_bullets_from_chunk(
-        self, chunk: str, retry_count: int, current_bullets: int
-    ) -> List[str]:
+    def _extract_bullets_from_chunk(self, chunk: str, retry_count: int, current_bullets: int) -> List[str]:
         """Extract bullet points from chunk using OpenAI API."""
         temperature = min(0.7 + (retry_count * 0.05), 0.95)
 
@@ -195,12 +189,7 @@ class BulletProcessor(BaseService):
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": SummaryPrompts.get_system_prompt()},
-                    {
-                        "role": "user",
-                        "content": SummaryPrompts.get_user_prompt(
-                            chunk, current_bullets
-                        ),
-                    },
+                    {"role": "user", "content": SummaryPrompts.get_user_prompt(chunk, current_bullets)},
                 ],
                 temperature=temperature,
                 max_tokens=4000,
@@ -217,6 +206,11 @@ class BulletProcessor(BaseService):
         """Create a bullet point object from text."""
         bullet = BulletPoint(content=text)
 
+        # Extract channel name from the bullet text if present
+        channel_match = re.search(r'Channel:\s*([^\n]+)', text)
+        if channel_match:
+            bullet.channel_name = channel_match.group(1).strip()
+
         if not text.strip().startswith('-'):
             bullet.validation_messages.append("Does not start with '-'")
             return bullet
@@ -224,7 +218,12 @@ class BulletProcessor(BaseService):
         # Extract project name
         project_match = re.search(r'\*\*([^*]+)\*\*', text)
         if project_match:
-            bullet.project_name = project_match.group(1).strip()
+            project_name = project_match.group(1).strip()
+            # Simplify project name
+            simplified_name = self._simplify_project_name(project_name)
+            # Replace original project name with simplified version
+            bullet.content = text.replace(f"**{project_name}**", f"**{simplified_name}**")
+            bullet.project_name = simplified_name
 
         # Extract channel_id and message_id from the text
         discord_match = re.search(r'https://discord\.com/channels/(\d+)/(\d+)/(\d+)', text)
@@ -233,18 +232,12 @@ class BulletProcessor(BaseService):
             bullet.channel_id = discord_match.group(2)  # Channel ID is the second group
             bullet.message_id = discord_match.group(3)  # Message ID is the third group
 
-            print(f"Extracted Discord Link: {bullet.discord_link}")
-            print(f"Extracted Channel ID: {bullet.channel_id}")
-            print(f"Extracted Message ID: {bullet.message_id}")
-
             # Validate the extracted link
             if not self._validate_discord_link(bullet.discord_link):
                 bullet.validation_messages.append("Invalid Discord link format")
-                print("Invalid Discord link detected.")
                 return bullet
         else:
             bullet.validation_messages.append("Missing Discord link")
-            print("No Discord link found in the bullet.")
 
         # Validate content length
         if len(text.strip()) <= 50:
@@ -252,21 +245,12 @@ class BulletProcessor(BaseService):
             return bullet
 
         bullet.is_valid = True
-        bullet.content = text  # Preserve the original text with emoji
         return bullet
 
     def _validate_discord_link(self, link: str) -> bool:
         """Validate Discord link format."""
-        # Check if link matches expected format with server ID, channel ID, and message ID
         pattern = f"^https://discord\\.com/channels/{self.SERVER_ID}/\\d+/\\d+$"
-        is_valid = bool(re.match(pattern, link))
-
-        if not is_valid:
-            print(f"Invalid Discord link format: {link}")
-        else:
-            print(f"Valid Discord link format: {link}")
-
-        return is_valid
+        return bool(re.match(pattern, link))
 
     def _fix_discord_link(self, content: str, chunk: str) -> Optional[str]:
         """Try to fix a Discord link using message metadata from the chunk."""
@@ -277,20 +261,15 @@ class BulletProcessor(BaseService):
             if message_match and channel_match:
                 message_id = message_match.group(1)
                 channel_id = channel_match.group(1)
-
-                print(
-                    f"Attempting to fix link with Channel ID: {channel_id} and Message ID: {message_id}"
-                )
-
                 correct_link = f"https://discord.com/channels/{self.SERVER_ID}/{channel_id}/{message_id}"
 
+                # Replace the incorrect link with the correct one
                 fixed_content = re.sub(
                     r"\(https://discord\.com/channels/[^)]+\)",
                     f"({correct_link})",
                     content,
                 )
 
-                print(f"Fixed Discord Link: {correct_link}")
                 return fixed_content
 
         except Exception as e:
@@ -325,66 +304,139 @@ class BulletProcessor(BaseService):
         else:
             result.append("⚠️ No project")
 
+        if bullet.channel_name:
+            result.append(f"✓ Channel: {bullet.channel_name}")
+
         return " | ".join(result)
 
+    def _find_related_bullets(self, bullets: List[str]) -> Dict[str, List[str]]:
+        """Find groups of related bullets based on content similarity."""
+        related_groups: Dict[str, List[str]] = {}
+        processed_indices: Set[int] = set()
+
+        for i, bullet in enumerate(bullets):
+            if i in processed_indices:
+                continue
+
+            # Extract main topic from the bullet (usually after the project name)
+            main_content = re.sub(r'\*\*[^*]+\*\*:', '', bullet).lower()
+            main_content = re.sub(r'\[(?:here|[^\]]+)\]\([^)]+\)', '', main_content)
+            
+            # Find related bullets
+            related = []
+            for j, other_bullet in enumerate(bullets):
+                if j != i and j not in processed_indices:
+                    other_content = re.sub(r'\*\*[^*]+\*\*:', '', other_bullet).lower()
+                    other_content = re.sub(r'\[(?:here|[^\]]+)\]\([^)]+\)', '', other_content)
+                    
+                    # Check for content similarity
+                    if self._is_content_related(main_content, other_content):
+                        related.append(other_bullet)
+                        processed_indices.add(j)
+
+            if related:
+                processed_indices.add(i)
+                key_topic = self._extract_key_topic(bullet)
+                if key_topic in related_groups:
+                    related_groups[key_topic].extend([bullet] + related)
+                else:
+                    related_groups[key_topic] = [bullet] + related
+
+        return related_groups
+
+    def _is_content_related(self, content1: str, content2: str) -> bool:
+        """Check if two pieces of content are related based on shared keywords and context."""
+        # Remove common words and punctuation
+        words1 = set(re.findall(r'\b\w+\b', content1.lower()))
+        words2 = set(re.findall(r'\b\w+\b', content2.lower()))
+        
+        # Calculate similarity based on shared significant words
+        common_words = words1.intersection(words2)
+        total_words = len(words1.union(words2))
+        
+        if total_words == 0:
+            return False
+            
+        similarity_ratio = len(common_words) / total_words
+        return similarity_ratio > 0.3  # Threshold for considering content related
+
+    def _extract_key_topic(self, bullet: str) -> str:
+        """Extract the key topic from a bullet point."""
+        # Try to get the project name first
+        project_match = re.search(r'\*\*([^*]+)\*\*', bullet)
+        if project_match:
+            return project_match.group(1)
+        
+        # Otherwise, extract key words from the content
+        content = re.sub(r'\[(?:here|[^\]]+)\]\([^)]+\)', '', bullet.lower())
+        words = re.findall(r'\b\w+\b', content)
+        return words[1] if len(words) > 1 else words[0] if words else "general"
+
+    def _combine_related_bullets(self, bullets: List[str]) -> str:
+        """Combine related bullets into a single comprehensive bullet point."""
+        if not bullets:
+            return ""
+
+        # Extract project name from the first bullet
+        project_match = re.search(r'\*\*([^*]+)\*\*', bullets[0])
+        project_name = project_match.group(1) if project_match else "General"
+
+        # Collect all Discord links
+        links = []
+        contents = []
+        for bullet in bullets:
+            # Extract Discord link
+            link_match = re.search(r'\[(?:here|[^\]]+)\]\((https://discord\.com/channels/[^)]+)\)', bullet)
+            if link_match:
+                links.append(link_match.group(1))
+            
+            # Extract content without the link part
+            content = re.sub(r'\[(?:here|[^\]]+)\]\(https://discord\.com/channels/[^)]+\)', '', bullet)
+            content = re.sub(r'\*\*[^*]+\*\*:', '', content)
+            contents.append(content.strip())
+
+        # Combine contents and links
+        combined_content = " ".join(contents)
+        combined_links = ", ".join(f"[discussion {i+1}]({link})" for i, link in enumerate(links))
+        
+        return f"- **{project_name}**: {combined_content} Read more: {combined_links}"
+
     def _post_process_bullets(self, bullets: List[str]) -> List[str]:
-        """Post-process bullets to merge related updates."""
+        """Post-process bullets to merge related updates and ensure proper attribution."""
         self.logger.info("\n" + "=" * 80)
         self.logger.info("Post-processing Bullets")
         self.logger.info("=" * 80)
 
-        # Group bullets by project
-        project_bullets = {}
-        other_bullets = []
+        # Find groups of related bullets
+        related_groups = self._find_related_bullets(bullets)
 
-        for bullet in bullets:
-            project_match = re.search(r"\*\*([^*]+)\*\*", bullet)
-            if project_match:
-                project_name = project_match.group(1).strip()
-                if project_name not in project_bullets:
-                    project_bullets[project_name] = [bullet]
-                else:
-                    project_bullets[project_name].append(bullet)
-            else:
-                other_bullets.append(bullet)
-
-        # Log project statistics
-        self.logger.info("\n📊 Project Statistics:")
-        self.logger.info(f"   Projects found: {len(project_bullets)}")
-        self.logger.info(f"   Other bullets: {len(other_bullets)}")
-
-        for project, bullet_list in project_bullets.items():
-            self.logger.info(f"   - {project}: {len(bullet_list)} updates")
-
-        # Prepare final bullet list
+        # Process each group and other unrelated bullets
         processed_bullets = []
-        for project_bullet_list in project_bullets.values():
-            processed_bullets.extend(project_bullet_list)
-        processed_bullets.extend(other_bullets)
+        processed_indices = set()
 
-        # Handle category replacement
-        final_bullets = [
-            (
-                bullet.replace(
-                    "### Insightful/Philosophical Community Discussions",
-                    "### Development Updates",
-                )
-                if "Core Features" in bullet
-                else bullet
+        # Combine related groups
+        for topic, group in related_groups.items():
+            combined_bullet = self._combine_related_bullets(group)
+            if combined_bullet:
+                processed_bullets.append(combined_bullet)
+
+        # Add remaining unrelated bullets
+        for i, bullet in enumerate(bullets):
+            if i not in processed_indices:
+                processed_bullets.append(bullet)
+
+        # Clean up any remaining bot references
+        final_bullets = []
+        for bullet in processed_bullets:
+            # Replace bot references with project attribution
+            bullet = re.sub(
+                r"(?:Bot|GroupAnonymousBot)\s+(?:highlighted|mentioned|discussed|shared|announced)",
+                "The team announced",
+                bullet
             )
-            for bullet in processed_bullets
-        ]
+            final_bullets.append(bullet)
 
-        self.logger.info(
-            f"\n✅ Post-processing complete - Final bullet count: {len(final_bullets)}"
-        )
+        self.logger.info(f"\n✅ Post-processing complete - Final bullet count: {len(final_bullets)}")
         self.logger.info("=" * 80 + "\n")
 
         return final_bullets
-
-    def _validate_ids(self, channel_id: str, message_id: str) -> bool:
-        # Implement logic to check if the IDs exist in your data source
-        # This could involve checking against a list of valid IDs or querying a database
-        valid_channel_ids = [...]  # Fetch or define valid channel IDs
-        valid_message_ids = [...]  # Fetch or define valid message IDs
-        return channel_id in valid_channel_ids and message_id in valid_message_ids

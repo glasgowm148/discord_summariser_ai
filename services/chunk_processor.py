@@ -16,7 +16,7 @@ class ChunkProcessor:
         
         for msg in sorted_messages:
             formatted_msg = (
-                f"Channel: {msg.channel_category}/{msg.channel_name}\n"
+                f"Channel: {msg.channel_name}\n"  # Only use channel_name, not the category
                 f"Author: {msg.author_name}\n"
                 f"Message: {msg.message_content}\n"
                 f"Channel ID: {msg.channel_id}\n"  # Make channel_id more prominent

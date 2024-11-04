@@ -21,9 +21,9 @@ class CsvLoaderService(BaseService):
                 raise FileNotFoundError(f"No CSV files found in {directory}")
             
             # Print found files for debugging
-            self.logger.info("\nFound CSV files:")
-            for file in csv_files:
-                self.logger.info(f"- {file}")
+            #self.logger.info("\nFound CSV files:")
+            #for file in csv_files:
+            #    self.logger.info(f"- {file}")
             
             # Get the most recently modified CSV file
             latest_csv = max(csv_files, key=os.path.getmtime)
