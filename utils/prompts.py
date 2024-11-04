@@ -5,22 +5,23 @@ class SummaryPrompts:
     @staticmethod
     def get_system_prompt() -> str:
         return """
-        You are an assistant tasked with creating high-priority, relevant bullet points from Discord messages, focusing on technical updates, philosophical insights, or notable discussions.
+        You are an assistant tasked with creating high-priority, relevant updates from Discord messages, focusing on technical updates, philosophical insights, or notable discussions.
         Each message includes channel and message IDs required to create accurate Discord message links.
 
         Requirements:
         1. Select an emoji that represents the type of each update (e.g., technical, philosophical, infrastructure).
         2. Include only critical updates or engaging discussions. Avoid minor preferences, general settings, or routine tech support details.
         3. Format each Discord link as follows: https://discord.com/channels/668903786361651200/{channel_id}/{message_id}.
-        4. Embed links naturally within sentences, using active verbs and avoiding generic phrases like "[More details]."
-        5. For multiple links in a single bullet, ensure they integrate smoothly within a structured sentence.
+        4. Embed links naturally within sentences using [text](#) format, using active verbs and avoiding generic phrases.
+        5. For multiple links in a single topic, integrate them smoothly within a natural paragraph.
         6. Capture updates with technical, philosophical, or strategic significance while skipping minor configuration preferences or non-impactful discussions.
         7. Use precise terminology, and avoid making assumptions about user roles (e.g., don't label someone as "Developer" unless specified).
         8. Distinguish between 'Nodo' by Jossemii and the Ergo Node, and ensure they're not conflated.
         9. When handling messages from GroupAnonymousBot:
            - These are bridged messages from project channels
-           - Attribute the message to the project/team rather than "GroupAnonymousBot"
+           - Attribute to the project/team rather than "GroupAnonymousBot"
            - Use the channel context to determine the correct project attribution
+           - Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
         10. Always provide full context for technical discussions:
            - Include relevant background information
            - Explain the significance of updates
@@ -36,18 +37,18 @@ class SummaryPrompts:
 
         Example:
         Given message with channel_id: 123456 and message_id: 789012
-        - 🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation process to enhance network security.
+        🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation process to enhance network security.
         """
 
     @staticmethod
     def get_user_prompt(chunk: str, current_bullets: int) -> str:
         return f"""
-        Create concise, relevant bullet points from the provided Discord messages, using the channel_id and message_id to create Discord links.
+        Create concise, relevant updates from the provided Discord messages, using the channel_id and message_id to create Discord links.
 
         Guidelines:
         - Focus on high-priority updates, including technical, philosophical, or strategically important insights. Exclude routine settings preferences, minor configuration mentions, and basic support issues.
-        - Construct Discord links in the format: https://discord.com/channels/668903786361651200/{{channel_id}}/{{message_id}}.
-        - Embed links using active verbs, avoiding generic "[More details]" phrases.
+        - Construct Discord links in the format: [text](https://discord.com/channels/668903786361651200/{{channel_id}}/{{message_id}}).
+        - Embed links naturally within sentences, avoiding generic phrases.
         - Select fitting emojis to match each update's focus, capturing only valuable developments or discussions.
         - Avoid making assumptions about user roles (e.g., "Developer") unless explicitly stated.
         - Remember: 'Nodo' by Jossemii is not the same as the Ergo Node; keep them distinct.
@@ -55,12 +56,13 @@ class SummaryPrompts:
           * Attribute to the relevant project/team based on the channel
           * Provide full context of the project's update or announcement
           * Maintain the original technical details while making the source clear
+          * Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
         - Keep project names concise:
           * Use base names without descriptors (e.g., "ErgoPay" not "ErgoPay Implementation")
           * Put version info and context in the description, not the project name
           * Maintain consistent capitalization (e.g., "duckpools" not "Duckpools")
 
-        Current count of valid bullets: {current_bullets}
+        Current count of valid updates: {current_bullets}
         Focus on capturing the most relevant, engaging updates.
 
         Content to analyze (includes channel_id and message_id for link generation):
@@ -70,31 +72,31 @@ class SummaryPrompts:
     @staticmethod
     def get_final_summary_prompt(bullets: List[str], days_covered: int) -> str:
         return f"""
-        Create a comprehensive summary from the provided bullet points, covering the past {days_covered} days.
+        Create a comprehensive summary from the provided updates, covering the past {days_covered} days.
 
         Structure:
 
         ## Updates from the Past {days_covered} Days
 
-        Include all essential information, presenting each update in its most relevant context.
-
         Requirements:
-        1. **Retain every unique detail** without summarizing away key insights or technical information.
-        2. **Group related updates** on the same project or topic into one bullet point, consolidating distinct details:
-        - Use one entry per project, maintaining all relevant links within it.
-        - For instance, if several Satergo updates relate to offline vault features, integrate them.
-        3. **Retain Discord links exactly as provided**.
+        1. **Format each update as a bullet point**:
+           - Start each update with "- " followed by an emoji and project name in bold
+           - Example: "- 🔧 **Project**: Description with [links](#)"
+        2. **Merge related updates** into single bullet points:
+           - Combine multiple points about the same topic/project into one comprehensive bullet
+           - Integrate all Discord links naturally within the text using [text](#) format
+           - Ensure the merged bullet provides a complete picture of the topic
+        3. **Retain every unique detail** without summarizing away key insights or technical information.
         4. Choose emojis based on the content type (technical, philosophical, infrastructure, etc.).
         5. Prioritize clarity and retain details without making role assumptions.
-        6. Avoid separate entries for closely related updates.
-        7. Ensure distinction between **Nodo by Jossemii** and **Ergo Node**.
-        8. Include an emoji with each bullet point.
-        9. Focus on insightful discussions, like technical implementations or strategic philosophies, excluding minor preferences or routine support requests.
-        10. For project updates (especially from GroupAnonymousBot):
+        6. Ensure distinction between **Nodo by Jossemii** and **Ergo Node**.
+        7. Focus on insightful discussions, like technical implementations or strategic philosophies, excluding minor preferences or routine support requests.
+        8. For project updates (especially from GroupAnonymousBot):
             - Attribute to the project/team rather than the bot
             - Provide complete context of the update
             - Maintain technical accuracy while being clear about the source
-        11. Keep project names concise and consistent:
+            - Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
+        9. Keep project names concise and consistent:
             - Use base project names without descriptors
             - Include version numbers and context in descriptions
             - Examples:
@@ -102,13 +104,11 @@ class SummaryPrompts:
               * "**Rosen**" not "**Rosen Liquidity Remarks**"
               * "**duckpools**" not "**Duckpools v2**"
 
-        This summary should be concise yet comprehensive, capturing each significant update in one bullet point per project or topic.
+        This summary should present each topic as a single, comprehensive bullet point that captures all related information.
 
-        Input bullets:
+        Input updates:
         {bullets}
         """
-
-
 
     @staticmethod
     def get_reddit_summary_prompt(bullets: List[str], days_covered: int) -> str:
@@ -126,45 +126,44 @@ class SummaryPrompts:
         1. Begin with a title in this format:
         **# Ergo Development Update - {days_covered} Day Roundup**
         2. Start with a brief introductory paragraph explaining the post's scope.
-        3. Structure the content into clear sections with bullet points for each detailed update:
+        3. Structure the content into clear sections with bullet points for each project:
         - ## Core Development
-            - **Project**: Brief summary of the update. [Discussed here](#)
+            - **Project**: Comprehensive update merging all related points into a flowing narrative. Include all links naturally as [discussed here](#).
         - ## dApp & Tool Development
-            - **Tool**: Update details. [Discussed here](#)
+            - **Tool**: Detailed update integrating all points about the tool into a cohesive story.
         - ## Infrastructure & Integration
-            - **Component**: Update details. [Discussed here](#)
+            - **Component**: Thorough update combining all related information into a clear narrative.
         - ## Community & Ecosystem
-            - **Event**: Summary of the event. [Discussed here](#)
+            - **Event**: Complete summary merging all event details into an engaging story.
 
-        4. For each update, include:
-        - **All unique technical details** without omitting key points.
-        - Expand abbreviations and technical terms where helpful.
-        - Consolidate related updates on the same topic into a single, clear bullet point.
-        - **Bold project names** (keeping them concise) and integrate links naturally.
-        - Add context for newer community members.
+        4. For each update:
+        - **Merge all related points** into a comprehensive bullet point
+        - **Include all unique technical details** without omitting key points
+        - Expand abbreviations and technical terms where helpful
+        - **Bold project names** (keeping them concise) and integrate links naturally
+        - Add context for newer community members
 
         5. Writing style:
-        - Use accessible, clear language suitable for Reddit while maintaining technical accuracy.
-        - Use bullet points for readability and engagement.
-        - Provide enough context and background to make updates understandable to a broader audience.
+        - Use accessible, clear language suitable for Reddit while maintaining technical accuracy
+        - Create flowing narratives that naturally incorporate all points and links
+        - Provide enough context and background to make updates understandable to a broader audience
         
         6. Notes:
-        - This version should be highly comprehensive, with all technical details included.
-        - Do not conflate **Nodo by Jossemii** with the **Ergo Node**.
+        - This version should be highly comprehensive, with all technical details included
+        - Do not conflate **Nodo by Jossemii** with the **Ergo Node**
         - For project updates (from GroupAnonymousBot or other sources):
           * Attribute to the project/team rather than the messenger
           * Provide complete context and significance
           * Maintain technical accuracy while being clear about the source
+          * Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
         - Keep project names concise:
           * Use base names (e.g., "**ErgoPay**" not "**ErgoPay Implementation**")
           * Put version info in descriptions
           * Maintain consistent capitalization
 
-        Original detailed bullets to expand from:
+        Original detailed updates to merge into bullet points:
         {bullets}
         """
-
-
 
     def generate_bullet(self, content: str) -> str:
         """Generate a single bullet point."""

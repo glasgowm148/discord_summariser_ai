@@ -18,11 +18,27 @@ from utils.prompts import SummaryPrompts  # Change to absolute import
 class SummaryGenerator(BaseService):
     SERVER_ID = "668903786361651200"  # Replace with your actual server ID
 
-    def __init__(self, api_key: str):
+    def __init__(
+        self, 
+        api_key: str, 
+        chunk_processor: Optional[ChunkProcessor] = None,
+        bullet_processor: Optional[BulletProcessor] = None,
+        summary_finalizer: Optional[SummaryFinalizer] = None
+    ):
         self.logger = setup_logging()
-        self.chunk_processor = ChunkProcessor()
-        self.bullet_processor = BulletProcessor(api_key)
-        self.summary_finalizer = SummaryFinalizer(api_key)
+        
+        # Use provided dependencies or create default ones
+        self.chunk_processor = chunk_processor or ChunkProcessor()
+        
+        # If no bullet_processor is provided, create a default one
+        if bullet_processor is None:
+            from services.service_factory import ServiceFactory
+            factory = ServiceFactory.get_instance()
+            self.bullet_processor = factory.create_bullet_processor(api_key, self.SERVER_ID)
+        else:
+            self.bullet_processor = bullet_processor
+        
+        self.summary_finalizer = summary_finalizer or SummaryFinalizer(api_key)
 
     def initialize(self):
         # Implement the initialization logic here
