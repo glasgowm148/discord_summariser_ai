@@ -1,69 +1,96 @@
 from typing import List
 import humanize
 from datetime import timedelta
+
 class SummaryPrompts:
     @staticmethod
-    def get_system_prompt() -> str:
-        return """
-        You are an assistant tasked with creating high-priority, relevant updates from Discord messages, focusing on technical updates, philosophical insights, or notable discussions.
-        Each message includes channel and message IDs required to create accurate Discord message links.
+    def convert_days_to_readable(days_covered: int) -> str:
+        """Convert days to a human-readable time period."""
+        if days_covered == 1:
+            return "day"
+        elif days_covered <= 7:
+            return "last week"
+        else:
+            return humanize.naturaldelta(timedelta(days=days_covered))
 
-        Requirements:
-        1. Select an emoji that represents the type of each update (e.g., technical, philosophical, infrastructure).
-        2. Include only critical updates or engaging discussions. Avoid minor preferences, general settings, or routine tech support details.
-        3. Format each Discord link as follows: https://discord.com/channels/668903786361651200/{channel_id}/{message_id}.
-        4. Embed links naturally within sentences using [text](#) format, using active verbs and avoiding generic phrases.
-        5. For multiple links in a single topic, integrate them smoothly within a natural paragraph.
-        6. Capture updates with technical, philosophical, or strategic significance while skipping minor configuration preferences or non-impactful discussions.
-        7. Use precise terminology, and avoid making assumptions about user roles (e.g., don't label someone as "Developer" unless specified).
-        8. Distinguish between 'Nodo' by Jossemii and the Ergo Node, and ensure they're not conflated.
-        9. When handling messages from GroupAnonymousBot:
-           - These are bridged messages from project channels
-           - Attribute to the project/team rather than "GroupAnonymousBot"
-           - Use the channel context to determine the correct project attribution
-           - Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
-        10. Always provide full context for technical discussions:
-           - Include relevant background information
-           - Explain the significance of updates
-           - Connect related points across messages
-           - Maintain technical accuracy while being clear
-        11. Keep project names concise and simple:
-           - Use the base project name without additional descriptors
-           - Examples:
-             * "ErgoPay" (not "Ergopay Implementation" or "ErgoPay Updates")
-             * "Rosen" (not "Rosen Liquidity Remarks" or "Rosen Bridge Update")
-             * "duckpools" (not "Duckpools v2 Improvements" or "Duckpools Protocol")
-           - Only include version numbers or additional context in the description, not the project name
+    @staticmethod
+    def _get_common_requirements() -> str:
+        """Common requirements shared across prompts."""
+        return """
+        Core Requirements:
+        1. Format Discord links as: https://discord.com/channels/668903786361651200/{channel_id}/{message_id}
+        2. Use precise terminology and avoid making assumptions about user roles
+        3. Never refer to an "Ergo team" - instead refer to specific software components (e.g., "Reference Client" or "Node")
+        4. Distinguish between 'Nodo' by Jossemii and the Ergo Node
+        5. Keep project names concise:
+           - Use base names without descriptors (e.g., "ErgoPay" not "ErgoPay Implementation")
+           - Put version info and context in descriptions
+           - Maintain consistent capitalization (e.g., "duckpools" not "Duckpools")
+        6. For GroupAnonymousBot messages:
+           - Attribute to the relevant project based on context
+           - Maintain technical accuracy while being clear about the source
+        """
+
+    @staticmethod
+    def get_system_prompt() -> str:
+        """Initial processing prompt for converting chunks into updates."""
+        return f"""
+        You are an advanced summarization assistant creating high-priority, relevant updates from Discord messages.
+        Focus on technical updates, philosophical insights, or notable discussions.
+
+        {SummaryPrompts._get_common_requirements()}
+
+        Summarization Imperatives:
+        1. Emoji and Update Categorization:
+           - Select a PRECISE emoji that captures the CORE essence of the update
+           - Prioritize UNIQUE and SIGNIFICANT developments
+           - Avoid redundant or marginally different points
+
+        2. Consolidation Principles:
+           - STRICTLY merge similar topics into a SINGLE, COMPREHENSIVE bullet
+           - Highlight the MOST DISTINCTIVE aspect of each discussion
+           - Eliminate EXACT or NEAR-DUPLICATE information
+           - Create a narrative that connects individual updates
+
+        3. Linking and Context:
+           - Embed links naturally using [text](#) format
+           - Provide CONCISE context that bridges technical depth with broader understanding
+           - Use consistent, clear linking phrases
+
+        4. Filtering Criteria:
+           - Include ONLY critical updates or deeply engaging discussions
+           - Skip minor configuration preferences
+           - Capture updates with strategic or philosophical significance
+
+        Unique Perspective Guidelines:
+        - For similar topics, extract THE MOST INNOVATIVE or IMPACTFUL point
+        - When multiple sources discuss similar themes, SYNTHESIZE their unique contributions
+        - Emphasize the DISTINCTIVE viewpoint of each contributor
 
         Example:
         Given message with channel_id: 123456 and message_id: 789012
-        🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a new block validation process to enhance network security.
+        🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a novel block validation process enhancing network security.
         """
 
     @staticmethod
     def get_user_prompt(chunk: str, current_bullets: int) -> str:
+        """Prompt for processing a specific chunk of messages."""
         return f"""
         Create concise, relevant updates from the provided Discord messages, using the channel_id and message_id to create Discord links.
 
-        Guidelines:
-        - Focus on high-priority updates, including technical, philosophical, or strategically important insights. Exclude routine settings preferences, minor configuration mentions, and basic support issues.
-        - Construct Discord links in the format: [text](https://discord.com/channels/668903786361651200/{{channel_id}}/{{message_id}}).
-        - Embed links naturally within sentences, avoiding generic phrases.
-        - Select fitting emojis to match each update's focus, capturing only valuable developments or discussions.
-        - Avoid making assumptions about user roles (e.g., "Developer") unless explicitly stated.
-        - Remember: 'Nodo' by Jossemii is not the same as the Ergo Node; keep them distinct.
-        - For GroupAnonymousBot messages:
-          * Attribute to the relevant project/team based on the channel
-          * Provide full context of the project's update or announcement
-          * Maintain the original technical details while making the source clear
-          * Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
-        - Keep project names concise:
-          * Use base names without descriptors (e.g., "ErgoPay" not "ErgoPay Implementation")
-          * Put version info and context in the description, not the project name
-          * Maintain consistent capitalization (e.g., "duckpools" not "Duckpools")
-
         Current count of valid updates: {current_bullets}
-        Focus on capturing the most relevant, engaging updates.
+        ADVANCED Consolidation Guidelines:
+        - ELIMINATE near-identical points IMMEDIATELY
+        - Extract ONLY the most INNOVATIVE or IMPACTFUL element from similar discussions
+        - Prioritize updates that offer UNIQUE technical or philosophical insights
+        - Maintain PRECISE technical accuracy while AVOIDING REDUNDANCY
+
+        Content Synthesis Strategy:
+        1. If multiple messages discuss similar topics:
+           - Identify the SINGLE most distinctive contribution
+           - Create ONE comprehensive bullet that captures the core insight
+        2. Preserve the UNIQUE voice of key contributors
+        3. Ensure EACH bullet adds SUBSTANTIVE value to the summary
 
         Content to analyze (includes channel_id and message_id for link generation):
         {chunk}
@@ -71,98 +98,84 @@ class SummaryPrompts:
 
     @staticmethod
     def get_final_summary_prompt(bullets: List[str], days_covered: int) -> str:
+        """Prompt for creating a comprehensive final summary."""
+        time_period = SummaryPrompts.convert_days_to_readable(days_covered)
         return f"""
-        Create a comprehensive summary from the provided updates, covering the past {days_covered} days.
+        Create a PRECISE, NON-REDUNDANT summary of updates from the past {time_period}.
 
-        Structure:
+        {SummaryPrompts._get_common_requirements()}
 
-        ## Updates from the Past {days_covered} Days
+        ADVANCED Summary Construction:
+        1. Thematic Sections (Prioritize UNIQUE Insights):
+           ## Core Technical Developments
+           ## Regulatory and Market Dynamics
+           ## Philosophical Perspectives
+           ## Community Interactions
 
-        Requirements:
-        1. **Format each update as a bullet point**:
-           - Start each update with "- " followed by an emoji and project name in bold
-           - Example: "- 🔧 **Project**: Description with [links](#)"
-        2. **Merge related updates** into single bullet points:
-           - Combine multiple points about the same topic/project into one comprehensive bullet
-           - Integrate all Discord links naturally within the text using [text](#) format
-           - Ensure the merged bullet provides a complete picture of the topic
-        3. **Retain every unique detail** without summarizing away key insights or technical information.
-        4. Choose emojis based on the content type (technical, philosophical, infrastructure, etc.).
-        5. Prioritize clarity and retain details without making role assumptions.
-        6. Ensure distinction between **Nodo by Jossemii** and **Ergo Node**.
-        7. Focus on insightful discussions, like technical implementations or strategic philosophies, excluding minor preferences or routine support requests.
-        8. For project updates (especially from GroupAnonymousBot):
-            - Attribute to the project/team rather than the bot
-            - Provide complete context of the update
-            - Maintain technical accuracy while being clear about the source
-            - Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
-        9. Keep project names concise and consistent:
-            - Use base project names without descriptors
-            - Include version numbers and context in descriptions
-            - Examples:
-              * "**ErgoPay**" not "**ErgoPay Implementation**"
-              * "**Rosen**" not "**Rosen Liquidity Remarks**"
-              * "**duckpools**" not "**Duckpools v2**"
+        2. STRICT Consolidation Imperatives:
+           - ELIMINATE all redundant or repeated information
+           - SYNTHESIZE similar points into a SINGLE, COMPREHENSIVE bullet
+           - Highlight the MOST DISTINCTIVE aspect of each discussion
+           - Create a CONCISE narrative flow connecting updates
 
-        This summary should present each topic as a single, comprehensive bullet point that captures all related information.
+        3. Perspective Preservation:
+           - Capture the UNIQUE voice of key contributors
+           - Emphasize INNOVATIVE thoughts or breakthrough insights
+           - Provide MINIMAL but IMPACTFUL context
 
-        Input updates:
+        Bullet Point Refinement Rules:
+           - MERGE discussions with significant overlap
+           - DISTINCTLY characterize different viewpoints
+           - Ensure EACH bullet offers UNIQUE, NON-REPETITIVE information
+
+        Original updates to synthesize:
         {bullets}
+
+        Final Output Requirements:
+        - Markdown formatted document
+        - MAXIMUM information density
+        - CLEAR differentiation between topics
+        - ENGAGING narrative balancing technical depth and broader context
         """
 
     @staticmethod
     def get_reddit_summary_prompt(bullets: List[str], days_covered: int) -> str:
-        # Convert days_covered to a human-readable format
-        if days_covered == 1:
-            time_period = "day"
-        elif days_covered <= 7:
-            time_period = "last week"
-        else:
-            time_period = humanize.naturaldelta(timedelta(days=days_covered))
+        """Prompt for creating detailed Reddit summaries."""
+        time_period = SummaryPrompts.convert_days_to_readable(days_covered)
+
         return f"""
-        Create an engaging, fully comprehensive Reddit post summarizing development updates from the Ergo ecosystem over the past {time_period}. 
+        Create an ENGAGING, COMPREHENSIVE Reddit post summarizing Ergo ecosystem updates from the past {time_period}.
 
-        Requirements:
-        1. Begin with a title in this format:
-        **# Ergo Development Update - {days_covered} Day Roundup**
-        2. Start with a brief introductory paragraph explaining the post's scope.
-        3. Structure the content into clear sections with bullet points for each project:
-        - ## Core Development
-            - **Project**: Comprehensive update merging all related points into a flowing narrative. Include all links naturally as [discussed here](#).
-        - ## dApp & Tool Development
-            - **Tool**: Detailed update integrating all points about the tool into a cohesive story.
-        - ## Infrastructure & Integration
-            - **Component**: Thorough update combining all related information into a clear narrative.
-        - ## Community & Ecosystem
-            - **Event**: Complete summary merging all event details into an engaging story.
+        {SummaryPrompts._get_common_requirements()}
 
-        4. For each update:
-        - **Merge all related points** into a comprehensive bullet point
-        - **Include all unique technical details** without omitting key points
-        - Expand abbreviations and technical terms where helpful
-        - **Bold project names** (keeping them concise) and integrate links naturally
-        - Add context for newer community members
+        Structured Summary with DISTINCTIVE Insights:
+        1. Title: **# Ergo Ecosystem Deep Dive - {days_covered} Day Roundup**
+        2. Compelling introductory paragraph highlighting the MOST SIGNIFICANT developments
 
-        5. Writing style:
-        - Use accessible, clear language suitable for Reddit while maintaining technical accuracy
-        - Create flowing narratives that naturally incorporate all points and links
-        - Provide enough context and background to make updates understandable to a broader audience
-        
-        6. Notes:
-        - This version should be highly comprehensive, with all technical details included
-        - Do not conflate **Nodo by Jossemii** with the **Ergo Node**
-        - For project updates (from GroupAnonymousBot or other sources):
-          * Attribute to the project/team rather than the messenger
-          * Provide complete context and significance
-          * Maintain technical accuracy while being clear about the source
-          * Example: "The Rosen team announced..." instead of "GroupAnonymousBot shared..."
-        - Keep project names concise:
-          * Use base names (e.g., "**ErgoPay**" not "**ErgoPay Implementation**")
-          * Put version info in descriptions
-          * Maintain consistent capitalization
+        Section Guidelines:
+        ## Core Development Breakthroughs
+        ## Regulatory Landscape
+        ## Market and Philosophical Perspectives
+        ## Community Innovation
 
-        Original detailed updates to merge into bullet points:
+        Advanced Content Strategies:
+        1. CONSOLIDATE related points into SINGULAR, IMPACTFUL bullets
+        2. ELIMINATE redundant or marginally different discussions
+        3. Preserve UNIQUE contributor perspectives
+        4. Balance technical depth with broader ecosystem context
+
+        Narrative Principles:
+        - Connect individual updates into a COHESIVE story
+        - Highlight INNOVATIVE thoughts and breakthrough insights
+        - Provide ACCESSIBLE explanations for technical concepts
+
+        Original updates to synthesize:
         {bullets}
+
+        Final Presentation:
+        - Clear, engaging markdown formatting
+        - MAXIMUM information density
+        - Narrative that EXCITES and INFORMS the Reddit community
         """
 
     def generate_bullet(self, content: str) -> str:

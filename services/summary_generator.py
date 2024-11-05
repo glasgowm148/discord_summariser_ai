@@ -114,10 +114,10 @@ class SummaryGenerator(BaseService):
                     self.logger.warning("Failed to create HackMD note.")
 
             self.logger.info("Creating final summaries...")
-            # Use curated bullets for Discord summary
+            # Use curated bullets for Discord summary, but pass ALL bullets for comprehensive summary
             discord_summary, discord_summary_with_cta, reddit_summary = (
                 self.summary_finalizer.create_final_summary(
-                    discord_bullets, 
+                    [str(bullet) for bullet in all_bullets], 
                     days_covered, 
                     hackmd_url  # Pass HackMD URL to be included in summary
                 )
@@ -162,7 +162,7 @@ class SummaryGenerator(BaseService):
 
             # Call GPT-4o to curate points
             response = self.openai_client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",  # Changed from GPT-4o to GPT-4o-mini
                 messages=[
                     {"role": "system", "content": "You are an expert summarization assistant."},
                     {"role": "user", "content": prompt}

@@ -1,6 +1,7 @@
 """Process chunks of text into natural paragraphs."""
 import re
 from typing import List, Optional
+from difflib import SequenceMatcher
 
 from openai import OpenAI
 
@@ -91,6 +92,7 @@ class BulletProcessor(BaseService):
                 self.logger.info(f"   Current update count: {len(chunk_updates)}/{MIN_BULLETS_PER_CHUNK} minimum")
                 self.logger.info("   " + "-" * 40)
 
+                # Modify extraction to handle multiple updates more robustly
                 new_updates = self._extract_updates_from_chunk(chunk, retry_count, len(chunk_updates))
                 if not new_updates:
                     self.logger.warning("   ⚠️  No updates returned from API")
@@ -101,6 +103,10 @@ class BulletProcessor(BaseService):
                 valid_new_updates = []
 
                 for i, update_text in enumerate(new_updates, 1):
+                    # Ensure each update starts with an emoji and has a clear structure
+                    if not re.match(r'^[\U0001F300-\U0001F9FF]', update_text.strip()):
+                        update_text = f"🔹 {update_text}"
+
                     update = self._create_update_point(update_text)
                     is_valid, messages = self.validator.validate_bullet(update)
                     update.is_valid = is_valid
@@ -142,25 +148,70 @@ class BulletProcessor(BaseService):
 
     def _deduplicate_updates(self, updates: List[str]) -> List[str]:
         """
-        Deduplicate updates while preserving order.
+        Advanced deduplication that preserves updates with different Discord links.
         
-        Removes exact duplicates and near-duplicates based on normalized text.
+        Removes duplicates while considering:
+        1. Core content similarity
+        2. Presence of unique Discord links
+        3. Information richness
         """
-        # Remove exact duplicates while preserving order
         unique_updates = []
-        seen = set()
+        processed_contents = []
+
         for update in updates:
-            # Normalize update for comparison (lowercase, remove extra whitespace)
-            normalized_update = re.sub(r'\s+', ' ', update.lower()).strip()
+            # Extract core content and Discord link
+            core_content = self.text_processor.extract_core_content(update)
+            discord_link = self.text_processor.extract_discord_url(update)
             
-            if normalized_update not in seen:
+            # Check if this update is a potential duplicate
+            is_duplicate = False
+            for idx, existing_content in enumerate(processed_contents):
+                # More nuanced similarity check
+                # Use difflib's SequenceMatcher for similarity
+                similarity_ratio = SequenceMatcher(None, core_content, existing_content).ratio()
+                
+                # If updates are very similar
+                if similarity_ratio > 0.7:
+                    # Compare Discord links
+                    existing_link = self.text_processor.extract_discord_url(unique_updates[idx])
+                    
+                    # If links are different, keep both updates
+                    if discord_link and existing_link and discord_link != existing_link:
+                        continue
+                    
+                    # If existing update is less informative, replace it
+                    if self._get_update_score(update) > self._get_update_score(unique_updates[idx]):
+                        unique_updates[idx] = update
+                        processed_contents[idx] = core_content
+                    
+                    is_duplicate = True
+                    break
+            
+            # Add update if not a duplicate
+            if not is_duplicate:
                 unique_updates.append(update)
-                seen.add(normalized_update)
-        
+                processed_contents.append(core_content)
+
         return unique_updates
 
+    def _get_update_score(self, update: str) -> int:
+        """Calculate an information score for an update."""
+        # Count words
+        word_count = len(update.split())
+        
+        # Bonus for having a Discord link
+        has_link = 5 if self.text_processor.extract_discord_url(update) else 0
+        
+        # Bonus for technical terms
+        has_technical_terms = 3 if re.search(
+            r'(?i)(implementation|development|infrastructure|protocol|system|platform|version|strategy)',
+            update
+        ) else 0
+        
+        return word_count + has_link + has_technical_terms
+
     def _extract_updates_from_chunk(self, chunk: str, retry_count: int, current_updates: int) -> List[str]:
-        """Extract updates from chunk using OpenAI API."""
+        """Extract updates from chunk using OpenAI API with more robust splitting."""
         temperature = min(0.7 + (retry_count * 0.05), 0.95)
 
         try:
@@ -175,9 +226,26 @@ class BulletProcessor(BaseService):
             )
 
             summary = response.choices[0].message.content
-            # Split on emoji at start of line, preserving the emoji
-            updates = re.split(r'(?<=\n)(?=[\U0001F300-\U0001F9FF])', summary)
-            return [u.strip() for u in updates if u.strip()]
+            
+            # More robust splitting strategy
+            # 1. First, try splitting by emoji-prefixed lines
+            updates = re.split(r'\n(?=[\U0001F300-\U0001F9FF])', summary)
+            
+            # If that fails, try alternative splitting
+            if len(updates) <= 1:
+                # Split by lines starting with bullet points or emojis
+                updates = re.split(r'\n(?=[-•\U0001F300-\U0001F9FF])', summary)
+            
+            # Clean and filter updates
+            updates = [u.strip() for u in updates if u.strip()]
+            
+            # Ensure each update starts with an emoji
+            updates = [
+                f"🔹 {u}" if not re.match(r'^[\U0001F300-\U0001F9FF]', u.strip()) else u
+                for u in updates
+            ]
+
+            return updates
 
         except Exception as e:
             self.handle_error(e, {"context": "OpenAI API call"})

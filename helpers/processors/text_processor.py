@@ -12,15 +12,15 @@ class TextProcessor:
         # Preserve more of the original context
         content = text.strip()
         
-        # Minimal removal of common phrases
+        # Minimal removal of common phrases with more precise whitespace handling
         content = re.sub(
-            r'(?i)(read more|explore|view|catch|delve|find out|check out|discover)\s*(?:more\s*)?',
-            '',
+            r'(?i)\s*(read more|explore|view|catch|delve|find out|check out|discover)\s*(?:more)?\s*',
+            ' ',
             content
         )
         
-        # Normalize whitespace, but keep original structure
-        return ' '.join(content.split())
+        # Normalize whitespace more comprehensively
+        return re.sub(r'\s+', ' ', content).strip()
 
     def optimize_chunk_size(self, chunk: str, max_length: int = 4000) -> str:
         """
@@ -39,9 +39,24 @@ class TextProcessor:
 
     @staticmethod
     def extract_discord_url(text: str) -> Optional[str]:
-        """Extract Discord URL from text."""
-        match = re.search(r'https://discord\.com/channels/\d+/\d+/\d+', text)
-        return match.group(0) if match else None
+        """
+        Extract Discord URL from text with more robust validation.
+        Handles various Discord link formats and ensures basic structure.
+        """
+        # Regex to match Discord channel/message links with more flexibility
+        discord_url_pattern = r'https://discord\.com/channels/(\d+)/(\d+)/(\d+)'
+        match = re.search(discord_url_pattern, text)
+        
+        if match:
+            # Validate server, channel, and message IDs
+            server_id, channel_id, message_id = match.groups()
+            
+            # Basic validation: ensure all IDs are numeric and non-zero
+            if (server_id.isdigit() and channel_id.isdigit() and message_id.isdigit() and
+                int(server_id) > 0 and int(channel_id) > 0 and int(message_id) > 0):
+                return match.group(0)
+        
+        return None
 
     @staticmethod
     def extract_category(text: str) -> Optional[Match[str]]:
@@ -97,16 +112,48 @@ class TextProcessor:
 
     @staticmethod
     def clean_whitespace(text: str) -> str:
-        """Clean excess whitespace while preserving markdown formatting."""
-        return re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+        """
+        Clean excess whitespace while preserving markdown formatting.
+        Handles multiple scenarios to ensure clean, consistent formatting.
+        """
+        # Remove multiple consecutive newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Remove leading/trailing whitespace from each line
+        lines = [line.strip() for line in text.split('\n')]
+        
+        # Remove empty lines
+        lines = [line for line in lines if line]
+        
+        # Rejoin lines with consistent double newline
+        return '\n\n'.join(lines)
 
     def standardize_text(self, text: str) -> str:
         """
-        Standardize text by cleaning whitespace.
+        Standardize text by cleaning whitespace and preserving markdown.
         
         This method is referenced in the bullet_processor, so I'll add a basic implementation.
         """
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
+        # Preserve markdown formatting while removing extra whitespace
+        # Split into lines to handle markdown elements separately
+        lines = text.split('\n')
         
-        return text
+        # Clean each line
+        cleaned_lines = []
+        for line in lines:
+            # Remove leading/trailing whitespace
+            line = line.strip()
+            
+            # For bullet points, ensure single space after bullet
+            if line.startswith('- '):
+                line = '- ' + line[2:].strip()
+            
+            # For headers, ensure single space after header marker
+            if re.match(r'^#+\s', line):
+                line = re.sub(r'^(#+)\s+', r'\1 ', line)
+            
+            if line:
+                cleaned_lines.append(line)
+        
+        # Rejoin with consistent newlines
+        return '\n'.join(cleaned_lines)

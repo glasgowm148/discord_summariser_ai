@@ -56,7 +56,7 @@ class SummaryValidator:
         self.suggest_prompt_improvements(all_issues["missing_projects"])
 
         # Generate a summary using SummaryPrompts
-        summary_prompt = SummaryPrompts.get_final_summary_prompt(
+        summary_prompt = SummaryPrompts.get_reddit_summary_prompt(
             bullets, days_covered=7
         )
         recommendations = self.get_gpt_recommendations(summary_prompt, bullets)

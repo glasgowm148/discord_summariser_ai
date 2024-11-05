@@ -1,6 +1,6 @@
-# Discord Chat Summarizer
+# Discord Chat Summarizer AI
 
-A Python application that summarizes Discord chat conversations using OpenAI's GPT models. The summarizer processes chat exports, generates concise bullet-point summaries, and can distribute them to Discord and Twitter.
+A sophisticated Python application that transforms Discord chat conversations into concise, intelligent summaries using advanced AI processing and OpenAI's GPT models.
 
 ## Project Structure
 
@@ -10,38 +10,70 @@ discord_summariser_ai/
 │   ├── .env.example
 │   ├── README.md
 │   └── settings.py
+├── helpers/
+│   ├── formatters/
+│   │   ├── content_formatter.py
+│   │   └── social_media_formatter.py
+│   ├── processors/
+│   │   ├── bullet_processor.py
+│   │   ├── bullet_validator.py
+│   │   ├── chunk_optimizer.py
+│   │   ├── chunk_processor.py
+│   │   ├── content_relationship_analyzer.py
+│   │   ├── discord_link_processor.py
+│   │   ├── text_cleaner.py
+│   │   └── text_processor.py
+│   └── validators/
+│       └── content_validator.py
 ├── models/
-│   └── discord_message.py
+│   ├── bullet_point.py
+│   ├── discord_message.py
+│   └── project.py
 ├── services/
 │   ├── base_service.py
-│   ├── bullet_processor.py
-│   ├── chunk_processor.py
 │   ├── csv_loader.py
-│   ├── discord_service.py
+│   ├── hackmd_service.py
 │   ├── json_cleaner.py
+│   ├── meta_service.py
+│   ├── project_manager.py
+│   ├── service_factory.py
 │   ├── summary_finalizer.py
 │   ├── summary_generator.py
-│   └── twitter_service.py
+│   ├── text_processor.py
+│   └── social_media/
+│       ├── discord_service.py
+│       ├── reddit_service.py
+│       └── twitter_service.py
 ├── utils/
 │   ├── logging_config.py
 │   └── prompts.py
 ├── scripts/
-│   └── export_chat.sh
-├── output/
-├── .gitignore
-├── README.md
+│   ├── build_knowledge_base.py
+│   ├── export_channel.sh
+│   ├── export_chat.sh
+│   ├── export_dev_history.sh
+│   ├── export_historical.sh
+│   └── export_server.sh
 └── summarise.py
 ```
 
-## Features
+## Advanced Features
 
-- Processes Discord chat exports in CSV format
-- Generates concise, bullet-point summaries using OpenAI's GPT models
-- Supports both daily and weekly summaries
-- Posts summaries to Discord via webhooks
-- Optional Twitter integration for sharing summaries
+- Intelligent Discord chat export processing
+- Multi-stage AI-powered summarization
+- Advanced content relationship analysis
+- Bullet point validation and optimization
+- Support for multiple export scenarios (channel, server, historical)
+- Flexible social media distribution (Discord, Twitter, Reddit)
 - Robust error handling and logging
-- Configurable settings and environment variables
+- Configurable AI processing parameters
+
+## Key Processing Components
+
+- **Content Processors**: Sophisticated text cleaning, chunk optimization, and relationship analysis
+- **Validators**: Ensure summary quality and coherence
+- **Formatters**: Adapt summaries for different platforms
+- **Social Media Services**: Distribute summaries across multiple channels
 
 ## Setup
 
@@ -62,7 +94,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
+4. Configure environment variables:
 ```bash
 cp config/.env.example config/.env
 ```
@@ -71,17 +103,21 @@ cp config/.env.example config/.env
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 TWITTER_CONSUMER_KEY=your_twitter_consumer_key
-TWITTER_CONSUMER_SECRET=your_twitter_consumer_secret
-TWITTER_ACCESS_TOKEN=your_twitter_access_token
-TWITTER_ACCESS_TOKEN_SECRET=your_twitter_access_token_secret
 DISCORD_WEBHOOK_URL=your_discord_webhook_url
 ```
 
 ## Usage
 
-1. Export Discord chat using the provided script:
+1. Export Discord chat using flexible export scripts:
 ```bash
-./scripts/export_chat.sh
+# Export entire channel
+./scripts/export_channel.sh
+
+# Export server history
+./scripts/export_server.sh
+
+# Export specific time range
+./scripts/export_historical.sh
 ```
 
 2. Run the summarizer:
@@ -89,30 +125,19 @@ DISCORD_WEBHOOK_URL=your_discord_webhook_url
 python summarise.py
 ```
 
-The script will:
-1. Load the latest chat export from the `output` directory
-2. Generate a summary using OpenAI's GPT models
-3. Post the summary to Discord
-4. Optionally post to Twitter if confirmed
+The application will:
+- Load and process the latest chat export
+- Generate an intelligent, context-aware summary
+- Distribute to configured platforms
+- Log detailed processing information
 
 ## Architecture
 
-The application follows a service-oriented architecture with clear separation of concerns:
-
-- **Base Service**: Provides common functionality for error handling and logging
-- **Services**: Individual components handle specific tasks (CSV loading, summary generation, etc.)
-- **Models**: Data structures for representing Discord messages and other entities
-- **Utils**: Helper functions and configuration
-- **Config**: Central location for settings and environment variables
-
-## Error Handling
-
-The application includes comprehensive error handling:
-- Validates environment variables and configurations
-- Handles API errors gracefully
-- Provides detailed logging
-- Implements retry mechanisms for API calls
-- Validates input data and generated content
+Modular, service-oriented design with:
+- Separation of concerns
+- Extensible processing pipeline
+- Configurable AI summarization strategies
+- Multi-platform support
 
 ## Contributing
 
