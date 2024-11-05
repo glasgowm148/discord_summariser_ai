@@ -8,11 +8,11 @@ from openai import OpenAI
 
 from models.discord_message import DiscordMessage
 from services.base_service import BaseService
-from services.bullet_processor import BulletPoint, BulletProcessor
-from services.chunk_processor import ChunkProcessor
+from helpers.processors.bullet_processor import BulletPoint, BulletProcessor
+from helpers.processors.chunk_processor import ChunkProcessor
 from services.summary_finalizer import SummaryFinalizer
 from services.hackmd_service import HackMDService
-from services.discord_service import DiscordService
+from services.social_media.discord_service import DiscordService
 from utils.logging_config import setup_logging
 
 

@@ -7,9 +7,9 @@ from openai import OpenAI
 from config.settings import MAX_RETRIES, MIN_BULLETS_PER_CHUNK
 from models.bullet_point import BulletPoint
 from services.base_service import BaseService
-from services.bullet_validator import BulletValidator
-from services.discord_link_processor import DiscordLinkProcessor
-from services.text_processor import TextProcessor
+from helpers.processors.bullet_validator import BulletValidator
+from helpers.processors.discord_link_processor import DiscordLinkProcessor
+from helpers.processors.text_processor import TextProcessor
 from utils.prompts import SummaryPrompts
 
 
@@ -32,6 +32,7 @@ class BulletProcessor(BaseService):
         self.total_updates = 0
         self._last_processed_bullets: List[BulletPoint] = []
 
+    # Rest of the code remains the same as in the previous version
     def initialize(self) -> None:
         """No initialization needed as dependencies are injected."""
         pass

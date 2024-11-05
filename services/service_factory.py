@@ -5,15 +5,17 @@ from typing import Optional
 from openai import OpenAI
 
 from services.base_service import BaseService
-from services.bullet_processor import BulletProcessor
-from services.bullet_validator import BulletValidator
-from services.chunk_processor import ChunkProcessor
-from services.discord_link_processor import DiscordLinkProcessor
+from helpers.processors.bullet_processor import BulletProcessor
+from helpers.processors.bullet_validator import BulletValidator
+from helpers.processors.chunk_processor import ChunkProcessor
+from helpers.processors.discord_link_processor import DiscordLinkProcessor
 from services.hackmd_service import HackMDService
 from services.summary_finalizer import SummaryFinalizer
 from services.summary_generator import SummaryGenerator
-from services.text_processor import TextProcessor
-from services.discord_service import DiscordService
+from helpers.processors.text_processor import TextProcessor
+from services.social_media.discord_service import DiscordService
+from services.social_media.reddit_service import RedditService
+from services.social_media.twitter_service import TwitterService
 
 
 class ServiceFactory:
@@ -92,6 +94,14 @@ class ServiceFactory:
     def create_discord_service(self) -> DiscordService:
         """Create a DiscordService instance."""
         return DiscordService()
+
+    def create_reddit_service(self) -> RedditService:
+        """Create a RedditService instance."""
+        return RedditService()
+
+    def create_twitter_service(self) -> TwitterService:
+        """Create a TwitterService instance."""
+        return TwitterService()
 
     def create_summary_generator(
         self, 

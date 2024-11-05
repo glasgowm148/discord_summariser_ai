@@ -3,7 +3,7 @@ import os
 import asyncio
 from typing import Optional, List, Tuple
 from dotenv import load_dotenv
-from services.reddit_service import RedditService
+from services.social_media.reddit_service import RedditService
 from pathlib import Path
 
 from config.settings import (
@@ -14,9 +14,9 @@ from config.settings import (
 from services.base_service import BaseService
 from services.csv_loader import CsvLoaderService
 from services.summary_generator import SummaryGenerator
-from services.discord_service import DiscordService
-from services.twitter_service import TwitterService
-from services.bullet_processor import BulletPoint
+from services.social_media.discord_service import DiscordService
+from services.social_media.twitter_service import TwitterService
+from helpers.processors.bullet_processor import BulletPoint
 from services.meta_service import MetaService
 from utils.logging_config import setup_logging
 
@@ -76,6 +76,7 @@ class ChatSummariser(BaseService):
             self.handle_error(e, {"context": "Service initialization"})
             raise
 
+    # Rest of the code remains the same as in the previous version
     def get_latest_summary(self) -> Optional[str]:
         """Get the latest summary from output/sent_summaries.md."""
         try:

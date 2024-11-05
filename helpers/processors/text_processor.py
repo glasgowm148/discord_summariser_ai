@@ -12,12 +12,6 @@ class TextProcessor:
         # Preserve more of the original context
         content = text.strip()
         
-        # Minimal link removal
-        content = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', content)
-        
-        # Preserve project names and some formatting
-        content = re.sub(r'\*\*([^*]+)\*\*', r'\1', content)
-        
         # Minimal removal of common phrases
         content = re.sub(
             r'(?i)(read more|explore|view|catch|delve|find out|check out|discover)\s*(?:more\s*)?',
@@ -25,8 +19,23 @@ class TextProcessor:
             content
         )
         
-        # Normalize whitespace, but keep some original structure
+        # Normalize whitespace, but keep original structure
         return ' '.join(content.split())
+
+    def optimize_chunk_size(self, chunk: str, max_length: int = 4000) -> str:
+        """
+        Optimize chunk size for processing, similar to the previous implementation.
+        If chunk is too long, extract core content.
+        """
+        # If chunk is already within acceptable length, return as is
+        if len(chunk) <= max_length:
+            return chunk
+        
+        # Try to extract core content
+        optimized_chunk = self.extract_core_content(chunk)
+        
+        # If optimization didn't help, truncate
+        return optimized_chunk[:max_length]
 
     @staticmethod
     def extract_discord_url(text: str) -> Optional[str]:
@@ -66,6 +75,16 @@ class TextProcessor:
         
         return word_count + has_numbers + has_quotes + has_technical_terms + has_unique_project
 
+    def simplify_project_name(self, project_name: str) -> str:
+        """
+        Simplify project name by removing common words and standardizing.
+        
+        This method is referenced in the bullet_processor, so I'll add a basic implementation.
+        """
+        # Remove common words and standardize
+        simplified = re.sub(r'(?i)\b(the|a|an|project|protocol|platform)\b', '', project_name).strip()
+        return simplified.title()
+
     @staticmethod
     def is_meta_commentary(text: str) -> bool:
         """Check if text is meta-commentary."""
@@ -80,3 +99,14 @@ class TextProcessor:
     def clean_whitespace(text: str) -> str:
         """Clean excess whitespace while preserving markdown formatting."""
         return re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+
+    def standardize_text(self, text: str) -> str:
+        """
+        Standardize text by cleaning whitespace.
+        
+        This method is referenced in the bullet_processor, so I'll add a basic implementation.
+        """
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
