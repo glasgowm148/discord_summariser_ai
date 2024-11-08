@@ -2,7 +2,7 @@
 import logging
 import os
 from typing import List, Optional, Tuple
-
+import re
 import pandas as pd
 from openai import OpenAI
 
@@ -75,6 +75,30 @@ class SummaryGenerator(BaseService):
         self, df: pd.DataFrame, days_covered: int
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         try:
+            # ULTRA VERBOSE INITIAL DATA LOGGING
+            print("\n" + "=" * 120)
+            print("INITIAL DATAFRAME ANALYSIS")
+            print("=" * 120)
+            print(f"Total rows: {len(df)}")
+            print("\nDataFrame Columns:")
+            print(df.columns)
+            
+            # Detailed channel analysis
+            print("\nChannel Distribution:")
+            channel_counts = df['channel_name'].value_counts()
+            print(channel_counts)
+            
+            # Sample rows from each channel
+            print("\nSample Rows by Channel:")
+            #for channel, count in channel_counts.items():
+            #    print(f"\n{channel} Channel (Total: {count} messages):")
+            #    channel_sample = df[df['channel_name'] == channel].head(3)
+            #    for _, row in channel_sample.iterrows():
+            #        print(f"  Author: {row['author_name']}")
+            #        print(f"  Content: {row['message_content']}")
+            #        print(f"  Timestamp: {row['message_timestamp']}")
+             #       print("  ---")
+
             if df.empty:
                 self.logger.error("Empty DataFrame provided")
                 return None, None, None
@@ -85,6 +109,28 @@ class SummaryGenerator(BaseService):
                 self.logger.error("No valid messages could be converted from DataFrame")
                 return None, None, None
 
+            # ULTRA VERBOSE MESSAGE CONVERSION LOGGING
+            print("\n" + "=" * 120)
+            print("CONVERTED MESSAGES ANALYSIS")
+            print("=" * 120)
+            print(f"Total converted messages: {len(messages)}")
+            
+            # Analyze converted messages by channel
+            message_channels = {}
+            for msg in messages:
+                if msg.channel_name not in message_channels:
+                    message_channels[msg.channel_name] = []
+                message_channels[msg.channel_name].append(msg)
+            
+            print("\nConverted Messages by Channel:") #correct here
+            #for channel, channel_messages in message_channels.items():
+            #    print(f"\n{channel} Channel (Total: {len(channel_messages)} messages):")
+            #    for msg in channel_messages[:5]:  # Show first 5 messages
+             #       print(f"  Author: {msg.author_name}")
+            #        print(f"  Content: {msg.message_content}")
+             #       print(f"  Timestamp: {msg.timestamp}")
+             #       print("  ---")
+
             self.logger.info(f"Splitting {len(messages)} messages into chunks...")
             chunks = self.chunk_processor.split_messages_into_chunks(messages)
             if not chunks:
@@ -92,12 +138,37 @@ class SummaryGenerator(BaseService):
                 return None, None, None
             self.logger.info(f"Generated {len(chunks)} chunks")
 
+            # ULTRA VERBOSE CHUNK LOGGING
+            print("\n" + "=" * 120)
+            print("CHUNK GENERATION DIAGNOSTIC")
+            print("=" * 120)
+            for i, chunk in enumerate(chunks, 1):
+                print(f"Chunk {i}:")
+                print(f"  Length: {len(chunk)} characters")
+                
+                # Extract and analyze channels in this chunk
+                chunk_channels = set(re.findall(r'Channel Name: (\w+)', chunk))
+                print(f"  Channels: {', '.join(chunk_channels)}")
+
             self.logger.info("Processing chunks to generate bullets...")
-            all_bullets = self.bullet_processor.process_chunks(chunks)
+            
+            # Collect bullets from ALL chunks
+            all_bullets = []
+            for i, chunk in enumerate(chunks, 1):
+                self.logger.info(f"Processing Chunk {i}/{len(chunks)}")
+                chunk_bullets = self.bullet_processor.process_chunks([chunk])
+                
+                # Log chunk-specific bullet details
+                print(f"\nChunk {i} Bullets:")
+                for bullet in chunk_bullets:
+                    print(f"  - {bullet}")
+                
+                all_bullets.extend(chunk_bullets)
+
             if not all_bullets:
                 self.logger.error("No bullets were generated from chunks")
                 return None, None, None
-            self.logger.info(f"Generated {len(all_bullets)} bullets")
+            self.logger.info(f"Generated {len(all_bullets)} total bullets")
 
             # Curate the most significant 5 points using GPT-4o
             discord_bullets = self._curate_most_significant_points(all_bullets)
@@ -190,6 +261,22 @@ class SummaryGenerator(BaseService):
             return bullets[:5]
 
     def _convert_df_to_messages(self, df: pd.DataFrame) -> List[DiscordMessage]:
+        # ULTRA VERBOSE LOGGING
+        print("\n" + "=" * 80)
+        print("MESSAGE CONVERSION DETAILS")
+        print("=" * 80)
+        
+        # Log DataFrame columns and first few rows
+        print("DataFrame Columns:")
+        print(df.columns)
+        print("\nFirst few rows:")
+        print(df.head())
+        
+        # Log unique channels and their message counts
+        print("\nUnique Channels and Message Counts:")
+        channel_counts = df['channel_name'].value_counts()
+        print(channel_counts)
+
         messages = []
         server_id = os.getenv("DISCORD_SERVER_ID")
 
@@ -216,6 +303,13 @@ class SummaryGenerator(BaseService):
                     }
                 )
                 continue
+
+        # Log converted messages
+        print("\nConverted Messages:")
+        print(f"Total messages: {len(messages)}")
+        print("Sample messages:")
+        for msg in messages[:5]:
+            print(f"Channel: {msg.channel_name}, Author: {msg.author_name}, Content: {msg.message_content[:100]}...")
 
         if not messages:
             raise ValueError("Too many errors converting DataFrame rows to messages")

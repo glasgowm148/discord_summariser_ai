@@ -22,20 +22,6 @@ class TextProcessor:
         # Normalize whitespace more comprehensively
         return re.sub(r'\s+', ' ', content).strip()
 
-    def optimize_chunk_size(self, chunk: str, max_length: int = 4000) -> str:
-        """
-        Optimize chunk size for processing, similar to the previous implementation.
-        If chunk is too long, extract core content.
-        """
-        # If chunk is already within acceptable length, return as is
-        if len(chunk) <= max_length:
-            return chunk
-        
-        # Try to extract core content
-        optimized_chunk = self.extract_core_content(chunk)
-        
-        # If optimization didn't help, truncate
-        return optimized_chunk[:max_length]
 
     @staticmethod
     def extract_discord_url(text: str) -> Optional[str]:
@@ -70,6 +56,14 @@ class TextProcessor:
         """Check if two texts are similar using sequence matcher, with a lower threshold."""
         # Preserve more context by using a lower similarity threshold
         return SequenceMatcher(None, text1, text2).ratio() > threshold
+
+    @staticmethod
+    def calculate_similarity(text1: str, text2: str, threshold: float = 0.5) -> float:
+        """
+        Calculate similarity ratio between two texts.
+        Wrapper method to maintain compatibility with existing code.
+        """
+        return SequenceMatcher(None, text1, text2).ratio()
 
     @staticmethod
     def get_info_score(text: str) -> int:

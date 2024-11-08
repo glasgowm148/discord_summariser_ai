@@ -9,6 +9,8 @@ from helpers.processors.bullet_processor import BulletProcessor
 from helpers.processors.bullet_validator import BulletValidator
 from helpers.processors.chunk_processor import ChunkProcessor
 from helpers.processors.discord_link_processor import DiscordLinkProcessor
+from helpers.processors.update_extractor import UpdateExtractor
+from helpers.processors.update_deduplicator import UpdateDeduplicator
 from services.hackmd_service import HackMDService
 from services.summary_finalizer import SummaryFinalizer
 from services.summary_generator import SummaryGenerator
@@ -60,6 +62,14 @@ class ServiceFactory:
         """Create a ChunkProcessor instance."""
         return ChunkProcessor()
 
+    def create_update_extractor(self) -> UpdateExtractor:
+        """Create an UpdateExtractor instance."""
+        return UpdateExtractor(self.openai_client)
+
+    def create_update_deduplicator(self) -> UpdateDeduplicator:
+        """Create an UpdateDeduplicator instance."""
+        return UpdateDeduplicator(self.create_text_processor())
+
     def create_bullet_processor(
         self, 
         api_key: Optional[str] = None, 
@@ -70,6 +80,8 @@ class ServiceFactory:
             text_processor=self.create_text_processor(),
             bullet_validator=self.create_bullet_validator(server_id),
             discord_link_processor=self.create_discord_link_processor(server_id),
+            update_extractor=self.create_update_extractor(),
+            update_deduplicator=self.create_update_deduplicator(),
             openai_client=self.openai_client
         )
 

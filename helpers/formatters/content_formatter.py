@@ -22,8 +22,28 @@ class ContentFormatter:
 
     @staticmethod
     def format_discord_summary(header: str, updates: List[str]) -> str:
-        """Format the complete Discord summary."""
-        formatted_updates = [ContentFormatter.format_bullet_point(update) for update in updates]
+        """Format the complete Discord summary with full markdown link preservation."""
+        formatted_updates = []
+        for update in updates:
+            # Find full markdown link if present
+            markdown_link_match = re.search(r'\[.*?\]\((https://discord\.com/channels/\d+/\d+/\d+)\)', update)
+            
+            # If no markdown link, look for plain URL
+            if not markdown_link_match:
+                url_match = re.search(r'(https://discord\.com/channels/\d+/\d+/\d+)', update)
+                if url_match:
+                    # Replace plain URL with markdown link
+                    update = re.sub(
+                        r'https://discord\.com/channels/\d+/\d+/\d+', 
+                        f'[🔗](https://discord.com/channels/{url_match.group(1)})', 
+                        update
+                    )
+            
+            # Format the update as a bullet point
+            formatted_update = ContentFormatter.format_bullet_point(update)
+            
+            formatted_updates.append(formatted_update)
+        
         return f"{header}\n" + "\n".join(formatted_updates)
 
     @staticmethod
@@ -77,5 +97,3 @@ class ContentFormatter:
         
         # Ensure proper spacing after colons in bullet points
         text = re.sub(r':\s+', ': ', text)
-        
-        return text.strip()

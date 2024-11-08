@@ -73,6 +73,11 @@ class SummaryFinalizer(BaseService):
     ) -> Tuple[Optional[str], Optional[str]]:
         """Create the condensed Discord summary."""
         try:
+            # Validate input
+            if not unique_updates:
+                self.logger.warning("No updates provided for Discord summary")
+                return None, None
+
             # Create section header
             header = ContentFormatter.format_header(f"Updates from the Past {days_covered} Days")
             
@@ -89,10 +94,14 @@ class SummaryFinalizer(BaseService):
             # Create version with call to action
             summary_with_cta = ContentFormatter.add_call_to_action(final_summary)
             
+            # Log the summary for debugging
+            self.logger.info(f"Discord Summary:\n{final_summary}")
+            
             return final_summary, summary_with_cta
             
         except Exception as e:
-            self.handle_error(e, {"context": "Creating Discord summary"})
+            self.logger.error(f"Error creating Discord summary: {e}")
+            self.handle_error(e, {"context": "Creating Discord summary", "updates": unique_updates})
             return None, None
 
     def _create_reddit_summary(

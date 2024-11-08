@@ -31,7 +31,7 @@ class BulletValidator(BaseService):
                 project_name=self._extract_project_name(bullet)
             )
 
-        # Check basic format - should start with an emoji
+        # Check basic format - should start with emoji
         if not re.match(r'^[\U0001F300-\U0001F9FF]', bullet.content.strip()):
             validation_messages.append("Does not start with emoji")
             return False, validation_messages

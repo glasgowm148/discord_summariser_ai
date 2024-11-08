@@ -107,7 +107,8 @@ class JsonCleanerService:
         output_path = os.path.join(output_dir, output_file)
         print(f"Saving cleaned data to {output_path}")
         with open(output_path, 'w') as f:
-            json.dump(cleaned_data, f, indent=4)
+            # Use separators to remove whitespace and create a compact, single-line JSON
+            json.dump(cleaned_data, f, separators=(',', ':'))
 
     def save_csv(self, cleaned_data: List[Dict], output_dir: str, days_covered: int) -> None:
         """Save cleaned data to CSV with explicit day count in filename."""

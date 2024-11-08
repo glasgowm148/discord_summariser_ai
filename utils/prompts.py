@@ -29,6 +29,10 @@ class SummaryPrompts:
         6. For GroupAnonymousBot messages:
            - Attribute to the relevant project based on context
            - Maintain technical accuracy while being clear about the source
+        7. Channel Context:
+           - Consider the channel's name and category when interpreting messages
+           - Ensure updates reflect the appropriate context of their source channel
+           - Frame updates according to the channel's typical subject matter
         """
 
     @staticmethod
@@ -45,6 +49,7 @@ class SummaryPrompts:
            - Select a PRECISE emoji that captures the CORE essence of the update
            - Prioritize UNIQUE and SIGNIFICANT developments
            - Avoid redundant or marginally different points
+           - Consider channel context when selecting categories
 
         2. Consolidation Principles:
            - STRICTLY merge similar topics into a SINGLE, COMPREHENSIVE bullet
@@ -56,6 +61,7 @@ class SummaryPrompts:
            - Embed links naturally using [text](#) format
            - Provide CONCISE context that bridges technical depth with broader understanding
            - Use consistent, clear linking phrases
+           - Consider channel context in framing updates
 
         4. Filtering Criteria:
            - Include ONLY critical updates or deeply engaging discussions
@@ -68,7 +74,7 @@ class SummaryPrompts:
         - Emphasize the DISTINCTIVE viewpoint of each contributor
 
         Example:
-        Given message with channel_id: 123456 and message_id: 789012
+        From a development channel message:
         🔧 **Node**: kushti [introduced](https://discord.com/channels/668903786361651200/123456/789012) a novel block validation process enhancing network security.
         """
 
@@ -76,7 +82,7 @@ class SummaryPrompts:
     def get_user_prompt(chunk: str, current_bullets: int) -> str:
         """Prompt for processing a specific chunk of messages."""
         return f"""
-        Create concise, relevant updates from the provided Discord messages, using the channel_id and message_id to create Discord links.
+        Create concise, relevant updates from the provided Discord messages. Each message includes its channel name and category, which provide important context about the discussion's typical subject matter and purpose.
 
         Current count of valid updates: {current_bullets}
         ADVANCED Consolidation Guidelines:
@@ -84,6 +90,7 @@ class SummaryPrompts:
         - Extract ONLY the most INNOVATIVE or IMPACTFUL element from similar discussions
         - Prioritize updates that offer UNIQUE technical or philosophical insights
         - Maintain PRECISE technical accuracy while AVOIDING REDUNDANCY
+        - Consider channel context when crafting updates
 
         Content Synthesis Strategy:
         1. If multiple messages discuss similar topics:
@@ -91,8 +98,9 @@ class SummaryPrompts:
            - Create ONE comprehensive bullet that captures the core insight
         2. Preserve the UNIQUE voice of key contributors
         3. Ensure EACH bullet adds SUBSTANTIVE value to the summary
+        4. Format: emoji **Category**: Content with [link](discord_url)
 
-        Content to analyze (includes channel_id and message_id for link generation):
+        Content to analyze (includes channel name, category, and message metadata):
         {chunk}
         """
 

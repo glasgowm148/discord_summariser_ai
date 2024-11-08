@@ -1,7 +1,6 @@
 """Process chunks of text into natural paragraphs."""
 import re
 from typing import List, Optional
-from difflib import SequenceMatcher
 
 from openai import OpenAI
 
@@ -11,7 +10,8 @@ from services.base_service import BaseService
 from helpers.processors.bullet_validator import BulletValidator
 from helpers.processors.discord_link_processor import DiscordLinkProcessor
 from helpers.processors.text_processor import TextProcessor
-from utils.prompts import SummaryPrompts
+from helpers.processors.update_extractor import UpdateExtractor
+from helpers.processors.update_deduplicator import UpdateDeduplicator
 
 
 class BulletProcessor(BaseService):
@@ -22,6 +22,8 @@ class BulletProcessor(BaseService):
         text_processor: TextProcessor,
         bullet_validator: BulletValidator,
         discord_link_processor: DiscordLinkProcessor,
+        update_extractor: UpdateExtractor,
+        update_deduplicator: UpdateDeduplicator,
         openai_client: OpenAI
     ):
         """Initialize with required dependencies."""
@@ -29,17 +31,54 @@ class BulletProcessor(BaseService):
         self.text_processor = text_processor
         self.validator = bullet_validator
         self.link_processor = discord_link_processor
+        self.update_extractor = update_extractor
+        self.update_deduplicator = update_deduplicator
         self.client = openai_client
         self.total_updates = 0
         self._last_processed_bullets: List[BulletPoint] = []
+        
+        # Call initialize method
+        self.initialize()
 
-    # Rest of the code remains the same as in the previous version
     def initialize(self) -> None:
-        """No initialization needed as dependencies are injected."""
-        pass
+        """
+        Initialize service-specific resources.
+        
+        This method is required by the BaseService abstract class.
+        For BulletProcessor, we'll do basic logging and validation.
+        """
+        self.logger.info("Initializing BulletProcessor")
+        
+        # Validate that required dependencies are set
+        if not all([
+            self.text_processor, 
+            self.validator, 
+            self.link_processor, 
+            self.update_extractor, 
+            self.update_deduplicator,
+            self.client
+        ]):
+            self.handle_error(
+                ValueError("One or more required dependencies are not initialized"),
+                {"context": "BulletProcessor initialization"}
+            )
 
     def process_chunks(self, chunks: List[str]) -> List[str]:
         """Process multiple chunks into updates."""
+        print("\n" + "=" * 80)
+        print("CHUNK PROCESSING DIAGNOSTIC")
+        print("=" * 80)
+        print(f"Total chunks: {len(chunks)}")
+        
+        # Log details of each chunk
+        for i, chunk in enumerate(chunks, 1):
+            print(f"\nChunk {i}:")
+            print(f"  Length: {len(chunk)} characters")
+            
+            # Extract and print unique channels in this chunk
+            chunk_channels = set(re.findall(r'Channel Name: (\w+)', chunk))
+            print(f"  Channels: {', '.join(chunk_channels)}")
+        
         collected_updates = []
         self.total_updates = 0
         self._last_processed_bullets = []  # Reset last processed bullets
@@ -53,8 +92,8 @@ class BulletProcessor(BaseService):
             self.logger.info("-" * 80)
 
             try:
-                processed_chunk = self.text_processor.optimize_chunk_size(chunk)
-                chunk_updates = self._process_single_chunk(processed_chunk, i)
+                
+                chunk_updates = self._process_single_chunk(chunk, i)
                 if chunk_updates:
                     collected_updates.extend(chunk_updates)
                     self.total_updates = len(collected_updates)
@@ -70,10 +109,20 @@ class BulletProcessor(BaseService):
             raise ValueError("No valid updates were generated from any chunks")
 
         # Deduplicate updates
-        deduplicated_updates = self._deduplicate_updates(collected_updates)
+        deduplicated_updates = self.update_deduplicator.deduplicate_updates(collected_updates)
 
         # Create BulletPoint objects for the deduplicated updates
         self._last_processed_bullets = [self._create_update_point(update) for update in deduplicated_updates]
+
+        # Log final update details
+        print("\n" + "=" * 80)
+        print("FINAL UPDATE DETAILS")
+        print("=" * 80)
+        print(f"Total collected updates: {len(collected_updates)}")
+        print(f"Total deduplicated updates: {len(deduplicated_updates)}")
+        print("\nDeduplicated Updates:")
+        for update in deduplicated_updates:
+            print(update)
 
         return deduplicated_updates
 
@@ -92,8 +141,8 @@ class BulletProcessor(BaseService):
                 self.logger.info(f"   Current update count: {len(chunk_updates)}/{MIN_BULLETS_PER_CHUNK} minimum")
                 self.logger.info("   " + "-" * 40)
 
-                # Modify extraction to handle multiple updates more robustly
-                new_updates = self._extract_updates_from_chunk(chunk, retry_count, len(chunk_updates))
+                # Extract updates using the dedicated extractor
+                new_updates = self.update_extractor.extract_updates_from_chunk(chunk, retry_count, len(chunk_updates))
                 if not new_updates:
                     self.logger.warning("   ⚠️  No updates returned from API")
                     retry_count += 1
@@ -146,135 +195,51 @@ class BulletProcessor(BaseService):
 
         return chunk_updates
 
-    def _deduplicate_updates(self, updates: List[str]) -> List[str]:
-        """
-        Advanced deduplication that preserves updates with different Discord links.
-        
-        Removes duplicates while considering:
-        1. Core content similarity
-        2. Presence of unique Discord links
-        3. Information richness
-        """
-        unique_updates = []
-        processed_contents = []
-
-        for update in updates:
-            # Extract core content and Discord link
-            core_content = self.text_processor.extract_core_content(update)
-            discord_link = self.text_processor.extract_discord_url(update)
-            
-            # Check if this update is a potential duplicate
-            is_duplicate = False
-            for idx, existing_content in enumerate(processed_contents):
-                # More nuanced similarity check
-                # Use difflib's SequenceMatcher for similarity
-                similarity_ratio = SequenceMatcher(None, core_content, existing_content).ratio()
-                
-                # If updates are very similar
-                if similarity_ratio > 0.7:
-                    # Compare Discord links
-                    existing_link = self.text_processor.extract_discord_url(unique_updates[idx])
-                    
-                    # If links are different, keep both updates
-                    if discord_link and existing_link and discord_link != existing_link:
-                        continue
-                    
-                    # If existing update is less informative, replace it
-                    if self._get_update_score(update) > self._get_update_score(unique_updates[idx]):
-                        unique_updates[idx] = update
-                        processed_contents[idx] = core_content
-                    
-                    is_duplicate = True
-                    break
-            
-            # Add update if not a duplicate
-            if not is_duplicate:
-                unique_updates.append(update)
-                processed_contents.append(core_content)
-
-        return unique_updates
-
-    def _get_update_score(self, update: str) -> int:
-        """Calculate an information score for an update."""
-        # Count words
-        word_count = len(update.split())
-        
-        # Bonus for having a Discord link
-        has_link = 5 if self.text_processor.extract_discord_url(update) else 0
-        
-        # Bonus for technical terms
-        has_technical_terms = 3 if re.search(
-            r'(?i)(implementation|development|infrastructure|protocol|system|platform|version|strategy)',
-            update
-        ) else 0
-        
-        return word_count + has_link + has_technical_terms
-
-    def _extract_updates_from_chunk(self, chunk: str, retry_count: int, current_updates: int) -> List[str]:
-        """Extract updates from chunk using OpenAI API with more robust splitting."""
-        temperature = min(0.7 + (retry_count * 0.05), 0.95)
-
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": SummaryPrompts.get_system_prompt()},
-                    {"role": "user", "content": SummaryPrompts.get_user_prompt(chunk, current_updates)},
-                ],
-                temperature=temperature,
-                max_tokens=4000,
-            )
-
-            summary = response.choices[0].message.content
-            
-            # More robust splitting strategy
-            # 1. First, try splitting by emoji-prefixed lines
-            updates = re.split(r'\n(?=[\U0001F300-\U0001F9FF])', summary)
-            
-            # If that fails, try alternative splitting
-            if len(updates) <= 1:
-                # Split by lines starting with bullet points or emojis
-                updates = re.split(r'\n(?=[-•\U0001F300-\U0001F9FF])', summary)
-            
-            # Clean and filter updates
-            updates = [u.strip() for u in updates if u.strip()]
-            
-            # Ensure each update starts with an emoji
-            updates = [
-                f"🔹 {u}" if not re.match(r'^[\U0001F300-\U0001F9FF]', u.strip()) else u
-                for u in updates
-            ]
-
-            return updates
-
-        except Exception as e:
-            self.handle_error(e, {"context": "OpenAI API call"})
-            raise
-
     def _create_update_point(self, text: str) -> BulletPoint:
         """Create an update point object from text."""
         update = BulletPoint(content=text)
 
-        # Extract channel name
-        channel_match = re.search(r'Channel:\s*([^\n]+)', text)
+        # Extract channel name from the chunk
+        channel_match = re.search(r'Channel Name:\s*(\w+)', text)
         if channel_match:
-            update.channel_name = channel_match.group(1).strip()
+            update.channel_name = channel_match.group(1)
+            print(f"\n🔍 EXTRACTED CHANNEL NAME: {update.channel_name}\n")
+            self.logger.info(f"Extracted channel name: {update.channel_name}")
 
-        # Extract project name
+        # Extract project name more intelligently
+        # First, try to find a project name that is not a channel category
         project_match = re.search(r'\*\*([^*]+)\*\*', text)
-        if project_match:
-            project_name = project_match.group(1).strip()
-            # Simplify project name
-            simplified_name = self.text_processor.simplify_project_name(project_name)
-            # Replace original project name with simplified version
-            update.content = text.replace(f"**{project_name}**", f"**{simplified_name}**")
-            update.project_name = simplified_name
-
-        # Extract Discord link components
+        
+        # Extract Discord link components first
         discord_match = re.search(r'https://discord\.com/channels/(\d+)/(\d+)/(\d+)', text)
         if discord_match:
             update.discord_link = discord_match.group(0)
             update.channel_id = discord_match.group(2)
             update.message_id = discord_match.group(3)
+
+        if project_match:
+            project_name = project_match.group(1).strip()
+            
+            # Check if the project name looks like a channel category (contains '/')
+            if '/' in project_name:
+                # If it's a channel category and we have an extracted channel name, use that
+                if update.channel_name:
+                    update.project_name = update.channel_name
+                    print(f"\n🏷️ USING CHANNEL NAME AS PROJECT NAME: {update.project_name}\n")
+                    self.logger.info(f"Using channel name as project name: {update.project_name}")
+                else:
+                    # Fallback to a generic name if no channel name is available
+                    update.project_name = 'Project'
+                    self.logger.warning("No channel name found, defaulting to 'Project'")
+            else:
+                # Simplify project name
+                simplified_name = self.text_processor.simplify_project_name(project_name)
+                # Replace original project name with simplified version
+                update.content = text.replace(f"**{project_name}**", f"**{simplified_name}**")
+                update.project_name = simplified_name
+
+        # Final logging to verify project name
+        print(f"\n📝 FINAL PROJECT NAME: {update.project_name}\n")
+        self.logger.info(f"Final project name: {update.project_name}")
 
         return update
