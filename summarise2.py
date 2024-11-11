@@ -57,8 +57,13 @@ class DiscordSummarizer:
         # Ensure consistent timezone
         date_threshold = self.current_date - timedelta(days=5)
         
-        # Convert timestamp to timezone-aware datetime
-        df['message_timestamp'] = pd.to_datetime(df['message_timestamp'], utc=True)
+        try:
+            # Convert timestamp to timezone-aware datetime with flexible parsing
+            df['message_timestamp'] = pd.to_datetime(df['message_timestamp'], format='ISO8601', utc=True)
+        except Exception as e:
+            logger.error(f"Timestamp parsing error: {e}")
+            logger.error(f"Problematic timestamps: {df['message_timestamp'].head()}")
+            raise ValueError(f"Failed to parse timestamps: {e}")
         
         # Track total messages
         self.stats['total_messages'] = len(df)
@@ -108,7 +113,14 @@ class DiscordSummarizer:
             # Prepare prompt with EXTREMELY strict filtering and context preservation
             prompt = SummaryPrompts.get_user_prompt(chunk, 0) + (
                 f"\n\nCRITICAL CONTEXT: Today's date is {self.current_date.strftime('%Y-%m-%d')}. "
-                "ADJUST ALL DATE REFERENCES ACCORDINGLY."
+                "CRITICAL DATE INTERPRETATION RULES:"
+                "\n- ALL DATE REFERENCES MUST BE INTERPRETED IN PAST TENSE"
+                "\n- For ANY event mentioned with a date BEFORE today, use PAST TENSE"
+                "\n- EXPLICITLY REPHRASE future-sounding language to past tense"
+                "\n- EXAMPLES OF CORRECTIONS:"
+                "   * 'will be discussed' → 'was discussed'"
+                "   * 'upcoming event on X date' → 'event that occurred on X date'"
+                "   * 'will take place' → 'took place'"
                 "\n\nEXTREMELY CRITICAL SUMMARY FORMATTING CRITERIA:"
                 "\n- GENERATE BETWEEN 8-12 THEMATIC BULLET POINTS"
                 "\n- COMPLETELY EXCLUDE ANY CONTENT RELATED TO:"
@@ -142,6 +154,8 @@ class DiscordSummarizer:
                 "   * Minor troubleshooting"
                 "   * Speculative conversations"
                 "   * Negative or pessimistic updates"
+                "   * Feedback"
+                "   * Challenges"
                 "\n- Prioritize updates that represent:"
                 "   * Significant protocol improvements"
                 "   * Strategic technological advancements"
@@ -149,6 +163,7 @@ class DiscordSummarizer:
                 "   * Positive community progress"
                 "   * Innovative project developments"
                 "\n- ZERO redundancy"
+                "\n- DO NOT INCLUDE A SUMMARY AT THE END."
                 "\n- Include ONLY updates that would be considered NEWSWORTHY and IMPACTFUL"
                 "\n- PRESERVE original message nuances"
                 "\n- USE DIVERSE EMOJIS reflecting the update's CONTEXT"
@@ -169,7 +184,7 @@ class DiscordSummarizer:
                         "content": prompt
                     }
                 ],
-                max_tokens=1500,  # Increased to allow more comprehensive summary
+                max_tokens=2000,  # Increased to allow more comprehensive summary
                 temperature=0.1  # Even lower temperature for extremely focused output
             )
             
@@ -177,6 +192,9 @@ class DiscordSummarizer:
             
             # Track summary generation stats
             self.stats['summary_tokens'] = response.usage.total_tokens if response.usage else 0
+            
+            # Remove the extra "• -" if present and ensure clean bullet points
+            summary = re.sub(r'^•\s*-\s*', '• ', summary, flags=re.MULTILINE)
             
             self.console.print("[green]✓ Summary Generated Successfully[/green]")
             return summary
@@ -190,12 +208,15 @@ class DiscordSummarizer:
         try:
             self.console.print("[bold blue]💾 Saving Summary...[/bold blue]")
             
-            # Default output file if not provided
-            if not output_file:
-                output_file = os.path.join('output', 'discord_summary.md')
+            # Default output directory 
+            output_dir = os.path.join('output', 'daily_summaries')
             
             # Ensure output directory exists
-            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Create filename using current date
+            date_str = self.current_date.strftime('%Y-%m-%d')
+            output_file = os.path.join(output_dir, f'{date_str}_discord_summary.md')
             
             # Explicitly remove any text after the last bullet point
             summary_lines = summary.split('\n')
@@ -217,9 +238,9 @@ class DiscordSummarizer:
             cleaned_summary = '\n'.join(cleaned_summary_lines)
             
             # Prepare full markdown content with intro
-            full_markdown = f"# Summary of discussions on the Discord over the past few days!\n\n{cleaned_summary}"
+            full_markdown = f"# Discord Summary for {date_str}\n\n{cleaned_summary}"
             
-            # Save to file
+            # Save to file (will overwrite if exists)
             with open(output_file, 'w') as f:
                 f.write(full_markdown)
             
@@ -255,7 +276,7 @@ class DiscordSummarizer:
 
 def main():
     # Path to input CSV
-    input_csv = 'output/export-668903786361651200-05Nov_08Nov_161058_3d/json_cleaned_4d.csv'
+    input_csv = 'output/export-668903786361651200-10Nov_11Nov_220637_1d/json_cleaned_2d.csv'
     
     try:
         # Initialize summarizer
