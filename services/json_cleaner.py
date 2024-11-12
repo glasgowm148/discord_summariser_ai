@@ -21,7 +21,7 @@ class JsonCleanerService:
         self.excluded_channels = ['bridge-tester', 'greasycex', 'mew-finance']
         self.excluded_categories = [
             'Σ  ・〘 Sigmanauts 〙☰',
-            '🗣 ・〘 Discussions 〙☰',
+         #   '🗣 ・〘 Discussions 〙☰',
             '🏠  ・〘 INFORMATION 〙☰',
             '🏔 ・〘 Foundation 〙☰',
             '🗺  ・〘 Regional 〙☰'

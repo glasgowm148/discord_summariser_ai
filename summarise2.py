@@ -7,8 +7,9 @@ Reads a CSV file of Discord messages and generates a concise summary.
 
 import os
 import re
+import json
 import logging
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 import pandas as pd
 from openai import OpenAI
 from datetime import datetime, timedelta
@@ -45,6 +46,199 @@ class DiscordSummarizer:
         self.console = Console()
         self.channel_distribution: Dict[str, int] = {}
         self.current_date = datetime.now(ZoneInfo('UTC'))
+        self.recent_topics_file = os.path.join('output', 'recent_topics.json')
+        self.TOPIC_EXPIRY_DAYS = 7  # Topics expire after 7 days
+        self.MAX_TOKENS = 100000  # Reduced from 128000 to leave room for system/user prompts
+
+    def _normalize_topic(self, topic: str) -> str:
+        """
+        Normalize topic for consistent comparison.
+        
+        Args:
+            topic: Raw topic string
+        
+        Returns:
+            Normalized topic string
+        """
+        # Convert to lowercase, remove punctuation, strip whitespace
+        return re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', '', topic.lower())).strip()
+
+    def _load_recent_topics(self) -> List[str]:
+        """
+        Load topics from recent summaries to avoid repetition.
+        
+        Returns:
+            List of recent discussion topics
+        """
+        try:
+            # If recent topics file exists, load it
+            if os.path.exists(self.recent_topics_file):
+                with open(self.recent_topics_file, 'r') as f:
+                    recent_topics = json.load(f)
+                
+                # Filter out topics older than specified days
+                cutoff_date = self.current_date - timedelta(days=self.TOPIC_EXPIRY_DAYS)
+                
+                # Filter and normalize topics
+                filtered_topics = {
+                    topic: timestamp for topic, timestamp in recent_topics.items()
+                    if datetime.fromisoformat(timestamp) > cutoff_date
+                }
+                
+                # Update the file with filtered topics
+                with open(self.recent_topics_file, 'w') as f:
+                    json.dump(filtered_topics, f, indent=2)
+                
+                return list(filtered_topics.keys())
+            
+            return []
+        
+        except Exception as e:
+            logger.error(f"Error loading recent topics: {e}")
+            return []
+
+    def _update_recent_topics(self, new_topics: List[str]):
+        """
+        Update the recent topics file with new topics.
+        
+        Args:
+            new_topics: List of new discussion topics to add
+        """
+        try:
+            # Load existing topics
+            recent_topics = {}
+            if os.path.exists(self.recent_topics_file):
+                with open(self.recent_topics_file, 'r') as f:
+                    recent_topics = json.load(f)
+            
+            # Normalize and add new topics with current timestamp
+            for topic in new_topics:
+                normalized_topic = self._normalize_topic(topic)
+                recent_topics[normalized_topic] = self.current_date.isoformat()
+            
+            # Write back to file
+            with open(self.recent_topics_file, 'w') as f:
+                json.dump(recent_topics, f, indent=2)
+        
+        except Exception as e:
+            logger.error(f"Error updating recent topics: {e}")
+
+    def _extract_summary_topics(self, summary: str) -> List[str]:
+        """
+        Extract key topics from the generated summary.
+        
+        Args:
+            summary: Generated summary text
+        
+        Returns:
+            List of extracted topics
+        """
+        # Extract topics from bullet points
+        topic_pattern = r'\*\*([^*]+)\*\*'
+        topics = re.findall(topic_pattern, summary)
+        
+        # Clean, normalize, and filter topics
+        cleaned_topics = [
+            topic.strip() 
+            for topic in topics 
+            if len(topic.strip()) > 3  # Avoid very short topics
+        ]
+        
+        return cleaned_topics
+
+    def _chunk_messages(self, messages_with_links: List[Tuple[str, str, str]], max_tokens: int = 100000) -> List[List[Tuple[str, str, str]]]:
+        """
+        Enhanced message chunking with more intelligent token estimation and context preservation.
+        
+        Args:
+            messages_with_links: List of message tuples
+            max_tokens: Maximum tokens per chunk
+        
+        Returns:
+            List of message chunks
+        """
+        def estimate_tokens(message: Tuple[str, str, str]) -> int:
+            """More precise token estimation."""
+            # Use a more conservative token estimation
+            # Approximately 1 token ≈ 3.5 characters for technical text
+            return len(f"{message[0]} {message[1]} {message[2]}") // 3.5
+
+        def is_high_quality_message(message: Tuple[str, str, str]) -> bool:
+            """
+            Determine if a message is high-quality and worth including.
+            
+            Criteria:
+            - Contains technical keywords
+            - Longer than 50 characters
+            - Not a generic or repetitive message
+            """
+            technical_keywords = [
+                'development', 'protocol', 'implementation', 'architecture', 
+                'design', 'algorithm', 'optimization', 'research', 'innovation'
+            ]
+            
+            message_text = message[0].lower()
+            
+            return (
+                len(message_text) > 50 and  # Substantial message length
+                any(keyword in message_text for keyword in technical_keywords) and  # Contains technical content
+                not re.search(r'\b(hi|hello|thanks|thank you|ok|okay)\b', message_text)  # Exclude generic messages
+            )
+
+        chunks = []
+        current_chunk = []
+        current_chunk_tokens = 0
+
+        # Sort messages by potential relevance
+        sorted_messages = sorted(
+            messages_with_links, 
+            key=lambda msg: is_high_quality_message(msg), 
+            reverse=True
+        )
+
+        for message in sorted_messages:
+            message_tokens = estimate_tokens(message)
+            
+            # If adding this message would exceed max tokens, start a new chunk
+            if current_chunk_tokens + message_tokens > max_tokens:
+                chunks.append(current_chunk)
+                current_chunk = []
+                current_chunk_tokens = 0
+            
+            # Only add high-quality messages
+            if is_high_quality_message(message):
+                current_chunk.append(message)
+                current_chunk_tokens += message_tokens
+        
+        # Add the last chunk if not empty
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        return chunks
+
+    def _deduplicate_chunks(self, chunks: List[List[Tuple[str, str, str]]]) -> List[Tuple[str, str, str]]:
+        """
+        Deduplicate messages across chunks.
+        
+        Args:
+            chunks: List of message chunks
+        
+        Returns:
+            Deduplicated list of messages
+        """
+        seen_messages = set()
+        deduplicated_messages = []
+
+        for chunk in chunks:
+            for message in chunk:
+                # Use message content for deduplication
+                message_key = message[0].lower().strip()
+                
+                if message_key not in seen_messages:
+                    seen_messages.add(message_key)
+                    deduplicated_messages.append(message)
+        
+        return deduplicated_messages
 
     def _preprocess_messages(self, df: pd.DataFrame) -> List[Tuple[str, str, str]]:
         """
@@ -100,14 +294,23 @@ class DiscordSummarizer:
         return messages_with_links
 
     def generate_summary(self, messages_with_links: List[Tuple[str, str, str]]) -> str:
-        """Generate a concise summary using OpenAI."""
+        """Generate a concise summary using OpenAI with chunking."""
         try:
             self.console.print("[bold blue]🤖 Generating Summary...[/bold blue]")
+            
+            # Load recent topics to exclude
+            recent_topics = self._load_recent_topics()
+            
+            # Chunk messages to handle token limit
+            message_chunks = self._chunk_messages(messages_with_links, self.MAX_TOKENS)
+            
+            # Deduplicate messages across chunks
+            deduplicated_messages = self._deduplicate_chunks(message_chunks)
             
             # Prepare chunk for processing with explicit channel context
             chunk = "\n".join([
                 f"Channel Name: {msg[2]}\nMessage: {msg[0]}\nLink: {msg[1]}"
-                for msg in messages_with_links
+                for msg in deduplicated_messages
             ])
             
             # Prepare prompt with EXTREMELY strict filtering and context preservation
@@ -129,6 +332,7 @@ class DiscordSummarizer:
                 "   * Trading strategies"
                 "   * Value speculations"
                 "   * Cryptocurrency market analysis"
+                f"\n- STRICTLY AVOID REPEATING TOPICS FROM RECENT DISCUSSIONS: {', '.join(recent_topics)}"
                 "\n- GROUP updates by MEANINGFUL TOPICS, NOT channel names"
                 "\n- TOPIC SELECTION RULES:"
                 "   * Identify overarching themes across different channels"
@@ -185,7 +389,7 @@ class DiscordSummarizer:
                     }
                 ],
                 max_tokens=2000,  # Increased to allow more comprehensive summary
-                temperature=0.1  # Even lower temperature for extremely focused output
+                temperature=0.2  # Slightly increased to allow more variation
             )
             
             summary = response.choices[0].message.content.strip()
@@ -195,6 +399,10 @@ class DiscordSummarizer:
             
             # Remove the extra "• -" if present and ensure clean bullet points
             summary = re.sub(r'^•\s*-\s*', '• ', summary, flags=re.MULTILINE)
+            
+            # Extract and update recent topics
+            extracted_topics = self._extract_summary_topics(summary)
+            self._update_recent_topics(extracted_topics)
             
             self.console.print("[green]✓ Summary Generated Successfully[/green]")
             return summary
@@ -276,7 +484,7 @@ class DiscordSummarizer:
 
 def main():
     # Path to input CSV
-    input_csv = 'output/export-668903786361651200-10Nov_11Nov_220637_1d/json_cleaned_2d.csv'
+    input_csv = 'output/export-668903786361651200-04Nov_11Nov_233050_7d/json_cleaned_8d.csv'
     
     try:
         # Initialize summarizer
