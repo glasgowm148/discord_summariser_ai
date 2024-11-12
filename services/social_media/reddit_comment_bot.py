@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import logging
 import discord
@@ -6,6 +7,14 @@ from discord.ext import commands
 from openai import OpenAI
 from dotenv import load_dotenv
 import requests
+import asyncio
+
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, project_root)
+
+# Import RedditService using relative import
+from services.social_media.reddit_service import RedditService
 
 # Configure logging
 logging.basicConfig(
@@ -35,6 +44,9 @@ intents.reactions = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Initialize RedditService
+reddit_service = RedditService()
+
 def extract_url(text):
     """Extract first URL from text"""
     url_pattern = r'https?://\S+'
@@ -59,6 +71,10 @@ def generate_reddit_title(content, url=None):
             max_tokens=100
         )
         title = response.choices[0].message.content.strip()
+        
+        # Remove surrounding quotes if present
+        title = title.strip('"\'')
+        
         logger.info(f"Generated Reddit title: {title}")
         return title
     except Exception as e:
@@ -113,27 +129,32 @@ async def on_reaction_add(reaction, user):
     message = reaction.message
     logger.info(f"Reaction added: {reaction.emoji} by {user.name}")
 
-    # Check for globe emoji (🌐) which triggers Reddit submission process
-    if str(reaction.emoji) == '🌐':
+    # Check for thumbs up emoji (👍) which triggers Reddit submission process
+    if str(reaction.emoji) == '👍':
         # Extract URL if present
         url = extract_url(message.content)
         
         # Prepare Reddit submission
         reddit_submission = prepare_reddit_submission(message.content, url)
         
-        # Prepare submission preview
-        submission_preview = f"""
-**Reddit Submission Preview**
-Title: {reddit_submission['title']}
-{f"URL: {reddit_submission['url']}" if url else ""}
-
-{reddit_submission['selftext'] if 'selftext' in reddit_submission else ''}
-
-Submitted by: Community via Discord
-"""
+        # Post to Reddit
+        try:
+            success = await reddit_service.post_to_reddit(
+                title=reddit_submission['title'], 
+                content=reddit_submission.get('selftext', '') or reddit_submission.get('url', '')
+            )
+            
+            if success:
+                logger.info("Successfully posted to Reddit")
+                # Optional: Send confirmation to the webhook channel
+                await send_to_webhook(f"✅ Reddit Post Successful:\n{reddit_submission['title']}")
+            else:
+                logger.error("Failed to post to Reddit")
+                await send_to_webhook(f"❌ Reddit Post Failed:\n{reddit_submission['title']}")
         
-        # Send to specified channel and add reactions
-        await send_to_webhook(submission_preview)
+        except Exception as e:
+            logger.error(f"Error posting to Reddit: {e}")
+            await send_to_webhook(f"❌ Reddit Post Error:\n{e}")
 
 async def send_to_webhook(message):
     """Send message to Discord channel and add reactions"""
@@ -145,15 +166,11 @@ async def send_to_webhook(message):
             # Send the message
             sent_message = await channel.send(message)
             
-            # Add thumbs up and thumbs down reactions
-            await sent_message.add_reaction('👍')
-            await sent_message.add_reaction('👎')
-            
-            logger.info("Message sent to channel and reactions added successfully")
+            logger.info("Message sent to channel successfully")
         else:
             logger.error(f"Could not find channel with ID {WEBHOOK_CHANNEL_ID}")
     except Exception as e:
-        logger.error(f"Error sending message or adding reactions: {e}")
+        logger.error(f"Error sending message: {e}")
 
 def main():
     bot.run(DISCORD_TOKEN)
