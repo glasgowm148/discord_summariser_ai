@@ -1,5 +1,4 @@
 import os
-import sys
 import re
 import logging
 import discord
@@ -7,7 +6,7 @@ from discord.ext import commands
 from openai import OpenAI
 from dotenv import load_dotenv
 import requests
-import asyncio
+import sys
 
 # Add project root to Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -46,6 +45,9 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Initialize RedditService
 reddit_service = RedditService()
+
+# Global dictionary to store draft details
+draft_messages = {}
 
 def extract_url(text):
     """Extract first URL from text"""
@@ -129,44 +131,74 @@ async def on_reaction_add(reaction, user):
     message = reaction.message
     logger.info(f"Reaction added: {reaction.emoji} by {user.name}")
 
-    # Check for thumbs up emoji (👍) which triggers Reddit submission process
-    if str(reaction.emoji) == '👍':
+    # Check for globe emoji (🌐) which triggers Reddit submission process
+    if str(reaction.emoji) == '🌐':
         # Extract URL if present
         url = extract_url(message.content)
         
         # Prepare Reddit submission
         reddit_submission = prepare_reddit_submission(message.content, url)
         
-        # Post to Reddit
-        try:
-            success = await reddit_service.post_to_reddit(
-                title=reddit_submission['title'], 
-                content=reddit_submission.get('selftext', '') or reddit_submission.get('url', '')
-            )
-            
-            if success:
-                logger.info("Successfully posted to Reddit")
-                # Optional: Send confirmation to the webhook channel
-                await send_to_webhook(f"✅ Reddit Post Successful:\n{reddit_submission['title']}")
-            else:
-                logger.error("Failed to post to Reddit")
-                await send_to_webhook(f"❌ Reddit Post Failed:\n{reddit_submission['title']}")
+        # Prepare submission preview
+        submission_preview = f"""
+**Reddit Submission Preview**
+Title: {reddit_submission['title']}
+{f"URL: {reddit_submission['url']}" if url else ""}
+
+{reddit_submission['selftext'] if 'selftext' in reddit_submission else ''}
+
+Submitted by: Community via Discord
+"""
         
-        except Exception as e:
-            logger.error(f"Error posting to Reddit: {e}")
-            await send_to_webhook(f"❌ Reddit Post Error:\n{e}")
+        # Send to specified channel and add reactions
+        draft_msg = await send_to_webhook(submission_preview)
+        
+        # Store draft details in global dictionary
+        draft_messages[draft_msg.id] = {
+            'title': reddit_submission['title'],
+            'content': reddit_submission.get('url', '') or reddit_submission.get('selftext', '')
+        }
+        
+        # Add reactions to the message
+        await draft_msg.add_reaction('👍')
+        await draft_msg.add_reaction('👎')
+    
+    # Check for thumbs up on a draft message
+    elif message.id in draft_messages:
+        if str(reaction.emoji) == '👍':
+            # Post to Reddit
+            try:
+                draft_details = draft_messages[message.id]
+                success = await reddit_service.post_to_reddit(
+                    title=draft_details['title'], 
+                    content=draft_details['content']
+                )
+                
+                if success:
+                    logger.info("Successfully posted to Reddit")
+                    await message.add_reaction('✅')
+                    # Remove the draft from tracking
+                    del draft_messages[message.id]
+                else:
+                    logger.error("Failed to post to Reddit")
+                    await message.add_reaction('❌')
+            
+            except Exception as e:
+                logger.error(f"Error posting to Reddit: {e}")
+                await message.add_reaction('❌')
 
 async def send_to_webhook(message):
     """Send message to Discord channel and add reactions"""
     try:
         # Get the channel by ID
-        channel = bot.get_channel(954383538474614895)
+        channel = bot.get_channel(WEBHOOK_CHANNEL_ID)
         
         if channel:
             # Send the message
             sent_message = await channel.send(message)
             
             logger.info("Message sent to channel successfully")
+            return sent_message
         else:
             logger.error(f"Could not find channel with ID {WEBHOOK_CHANNEL_ID}")
     except Exception as e:
