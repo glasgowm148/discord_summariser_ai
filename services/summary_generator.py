@@ -1,7 +1,8 @@
 # services/summary_generator.py
+from dataclasses import dataclass
 import logging
 import os
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 import pandas as pd
 from openai import OpenAI
 
@@ -10,9 +11,22 @@ from services.base_service import BaseService
 from helpers.processors.bullet_processor import BulletPoint, BulletProcessor
 from helpers.processors.chunk_processor import ChunkProcessor
 from services.summary_finalizer import SummaryFinalizer
-from services.hackmd_service import HackMDService
-from services.social_media.discord_service import DiscordService
-from utils.logging_config import setup_logging
+
+if TYPE_CHECKING:
+    from services.hackmd_service import HackMDService
+    from services.social_media.discord_service import DiscordService
+
+
+@dataclass
+class SummaryResult:
+    """Structured output from summary generation."""
+
+    discord_summary: str
+    discord_summary_with_cta: str
+    reddit_summary: str
+    all_bullets: List[str]
+    discord_bullets: List[str]
+    hackmd_url: Optional[str] = None
 
 
 class SummaryGenerator(BaseService):
@@ -24,8 +38,8 @@ class SummaryGenerator(BaseService):
         chunk_processor: Optional[ChunkProcessor] = None,
         bullet_processor: Optional[BulletProcessor] = None,
         summary_finalizer: Optional[SummaryFinalizer] = None,
-        hackmd_service: Optional[HackMDService] = None,
-        discord_service: Optional[DiscordService] = None,
+        hackmd_service: Optional["HackMDService"] = None,
+        discord_service: Optional["DiscordService"] = None,
         openai_client: Optional[OpenAI] = None,
         post_to_hackmd: bool = False
     ):
@@ -71,10 +85,18 @@ class SummaryGenerator(BaseService):
     def generate_summary(
         self, df: pd.DataFrame, days_covered: int
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Backward-compatible tuple API for callers."""
+        result = self.generate_result(df, days_covered)
+        if result is None:
+            return None, None, None
+        return result.discord_summary, result.discord_summary_with_cta, result.reddit_summary
+
+    def generate_result(self, df: pd.DataFrame, days_covered: int) -> Optional[SummaryResult]:
+        """Generate summaries and return structured result data."""
         try:
             if df.empty:
                 self.logger.error("Empty DataFrame provided")
-                return None, None, None
+                return None
 
             self.logger.info("Loaded DataFrame with %s rows and columns: %s", len(df), list(df.columns))
             if 'channel_name' in df:
@@ -84,7 +106,7 @@ class SummaryGenerator(BaseService):
             messages = self._convert_df_to_messages(df)
             if not messages:
                 self.logger.error("No valid messages could be converted from DataFrame")
-                return None, None, None
+                return None
 
             self.logger.info("Converted %s messages", len(messages))
 
@@ -92,7 +114,7 @@ class SummaryGenerator(BaseService):
             chunks = self.chunk_processor.split_messages_into_chunks(messages)
             if not chunks:
                 self.logger.error("No chunks were generated from messages")
-                return None, None, None
+                return None
             self.logger.info(f"Generated {len(chunks)} chunks")
             for i, chunk in enumerate(chunks, 1):
                 self.logger.debug("Chunk %s length: %s characters", i, len(chunk))
@@ -103,13 +125,14 @@ class SummaryGenerator(BaseService):
             all_bullets = []
             for i, chunk in enumerate(chunks, 1):
                 self.logger.info(f"Processing Chunk {i}/{len(chunks)}")
-                chunk_bullets = self.bullet_processor.process_chunks([chunk])
+                chunk_result = self.bullet_processor.process_chunks_result([chunk])
+                chunk_bullets = chunk_result.deduplicated_updates
                 self.logger.info("Chunk %s produced %s bullets", i, len(chunk_bullets))
                 all_bullets.extend(chunk_bullets)
 
             if not all_bullets:
                 self.logger.error("No bullets were generated from chunks")
-                return None, None, None
+                return None
             self.logger.info(f"Generated {len(all_bullets)} total bullets")
 
             # Curate the Discord version but keep all bullets for Reddit.
@@ -142,18 +165,25 @@ class SummaryGenerator(BaseService):
 
             if not discord_summary or not discord_summary_with_cta:
                 self.logger.error("Failed to create Discord summary")
-                return None, None, None
+                return None
 
             if not reddit_summary:
                 self.logger.error("Failed to create Reddit summary")
-                return None, None, None
+                return None
 
             self.logger.info("Summary generation completed successfully")
-            return discord_summary, discord_summary_with_cta, reddit_summary
+            return SummaryResult(
+                discord_summary=discord_summary,
+                discord_summary_with_cta=discord_summary_with_cta,
+                reddit_summary=reddit_summary,
+                all_bullets=[str(bullet) for bullet in all_bullets],
+                discord_bullets=[str(bullet) for bullet in discord_bullets],
+                hackmd_url=hackmd_url,
+            )
 
         except Exception as e:
             self.handle_error(e, {"context": "Summary generation"})
-            return None, None, None
+            return None
 
     def _curate_most_significant_points(self, bullets: List[str]) -> List[str]:
         """

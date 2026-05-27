@@ -1,13 +1,16 @@
 # services/discord_service.py
+import logging
 import os
 import openai
-import requests
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
+from services.http_client import HttpClient
 
 class DiscordService:
-    def __init__(self):
+    def __init__(self, http_client: HttpClient | None = None):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.http = http_client or HttpClient()
         # Load environment variables from config/.env
         env_path = Path('config/.env')
         if not env_path.exists():
@@ -43,22 +46,26 @@ class DiscordService:
             "Arabic": "Arabic"
         }
 
+    def validate_credentials(self) -> bool:
+        """Validate minimum Discord posting configuration."""
+        return bool(self.webhook_urls.get('default'))
+
     def send_message(self, content: str, chunk_size: int = 2000) -> None:
         """Send message to all configured Discord webhooks with translations."""
         if not self.webhook_urls['default']:
-            print("Error: 'default' webhook URL is missing. Please set the DISCORD_WEBHOOK_URL environment variable.")
+            self.logger.error("DISCORD_WEBHOOK_URL is missing")
             return
 
         for language, url in self.webhook_urls.items():
             if not url:
-                print(f"No webhook URL for {language}, skipping.")
+                self.logger.info("No webhook URL for %s, skipping.", language)
                 continue
 
             if language == 'default':
                 processed_content = content
-                print("Sending original content to Discord (default)...")
+                self.logger.info("Sending original content to Discord")
             else:
-                print(f"Translating content to {language}...")
+                self.logger.info("Translating content to %s", language)
                 processed_content = self._translate_content(content, language)
 
             self._send_chunks_to_webhook(processed_content, url, chunk_size, language)
@@ -66,52 +73,38 @@ class DiscordService:
     def send_reddit_summary(self, content: str, chunk_size: int = 2000) -> None:
         """Send the detailed Reddit summary to the tester webhook."""
         if not self.webhook_urls.get('tester'):
-            print("Warning: Tester webhook URL not configured, skipping Reddit summary")
+            self.logger.warning("Tester webhook URL not configured, skipping Reddit summary")
             return
 
-        print("Sending detailed Reddit summary to tester webhook...")
+        self.logger.info("Sending detailed Reddit summary to tester webhook")
         formatted_content = "```markdown\n" + content + "\n```"
         self._send_chunks_to_webhook(formatted_content, self.webhook_urls['tester'], chunk_size, "reddit")
 
     def send_daily_message(self, content: str, chunk_size: int = 2000) -> None:
         """Send message to default Discord webhook only (for daily updates)."""
         if not self.webhook_urls['default']:
-            print("Error: 'default' webhook URL is missing. Please set the DISCORD_WEBHOOK_URL environment variable.")
+            self.logger.error("DISCORD_WEBHOOK_URL is missing")
             return
 
-        print("Sending daily content to Discord (default webhook only)...")
+        self.logger.info("Sending daily content to Discord")
         try:
-            # Print webhook URL for debugging (excluding sensitive parts)
             webhook_url = self.webhook_urls['default']
-            if webhook_url:
-                safe_url = webhook_url.split('/')
-                safe_url[-1] = '****'  # Hide the actual webhook ID
-                print(f"Using webhook URL: {'/'.join(safe_url)}")
-            
             self._send_chunks_to_webhook(content, webhook_url, chunk_size, "default")
         except Exception as e:
-            print(f"Error sending daily message: {str(e)}")
-            print(f"Full error details: {type(e).__name__}: {str(e)}")
+            self.logger.error("Error sending daily message: %s", e)
 
     def send_weekly_message(self, content: str, chunk_size: int = 2000) -> None:
         """Send message to default Discord webhook only (for weekly updates)."""
         if not self.webhook_urls['default']:
-            print("Error: 'default' webhook URL is missing. Please set the DISCORD_WEBHOOK_URL environment variable.")
+            self.logger.error("DISCORD_WEBHOOK_URL is missing")
             return
 
-        print("Sending weekly content to Discord (default webhook only)...")
+        self.logger.info("Sending weekly content to Discord")
         try:
-            # Print webhook URL for debugging (excluding sensitive parts)
             webhook_url = self.webhook_urls['default']
-            if webhook_url:
-                safe_url = webhook_url.split('/')
-                safe_url[-1] = '****'  # Hide the actual webhook ID
-                print(f"Using webhook URL: {'/'.join(safe_url)}")
-            
             self._send_chunks_to_webhook(content, webhook_url, chunk_size, "default")
         except Exception as e:
-            print(f"Error sending weekly message: {str(e)}")
-            print(f"Full error details: {type(e).__name__}: {str(e)}")
+            self.logger.error("Error sending weekly message: %s", e)
 
     def _translate_content(self, content: str, language: str) -> str:
         """Translate content to specified language using OpenAI."""
@@ -128,55 +121,44 @@ class DiscordService:
             )
             return response.model_dump()["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"Error translating content to {language}: {e}")
+            self.logger.error("Error translating content to %s: %s", language, e)
             return content
 
     def _send_chunks_to_webhook(self, content: str, webhook_url: str, chunk_size: int, language: str) -> None:
         """Split content into chunks and send to Discord webhook."""
         try:
             if not content:
-                print("Warning: Empty content provided to _send_chunks_to_webhook")
+                self.logger.warning("Empty content provided to _send_chunks_to_webhook")
                 return
                 
             chunks = self._split_into_chunks(content, chunk_size)
-            print(f"Sending {len(chunks)} chunks for {language}...")
+            self.logger.info("Sending %s chunks for %s", len(chunks), language)
             
             for i, chunk in enumerate(chunks):
                 try:
-                    # Print chunk details for debugging
-                    print(f"\nSending chunk {i + 1}/{len(chunks)} ({len(chunk)} characters)")
-                    
-                    response = requests.post(
+                    self.logger.debug("Sending chunk %s/%s (%s chars)", i + 1, len(chunks), len(chunk))
+                    response = self.http.post(
                         webhook_url, 
                         json={"content": chunk, "allowed_mentions": {"parse": []}},
-                        timeout=10  # Add timeout
                     )
                     
-                    # Print response details
-                    print(f"Response status code: {response.status_code}")
-                    if response.status_code != 204:
-                        print(f"Response text: {response.text}")
-                    
                     if response.status_code == 204:
-                        print(f"{language} chunk {i + 1}/{len(chunks)} sent successfully.")
-                    else:
-                        print(f"Failed to send {language} chunk {i + 1}/{len(chunks)}")
-                        print(f"Status code: {response.status_code}")
-                        print(f"Response: {response.text}")
-                        raise Exception(f"Discord API returned status code {response.status_code}: {response.text}")
+                        self.logger.info("%s chunk %s/%s sent", language, i + 1, len(chunks))
+                        continue
+                    raise Exception(f"Discord API returned status code {response.status_code}: {response.text}")
                         
-                except requests.exceptions.RequestException as e:
-                    print(f"Network error sending chunk {i + 1}: {str(e)}")
+                except Exception as e:
+                    self.logger.error("Error sending chunk %s: %s", i + 1, e)
                     raise
                     
         except Exception as e:
-            print(f"Error in _send_chunks_to_webhook: {str(e)}")
+            self.logger.error("Error in _send_chunks_to_webhook: %s", e)
             raise
 
     def _split_into_chunks(self, content: str, chunk_size: int) -> List[str]:
         """Split content into chunks that fit Discord's message size limit."""
         if not content:
-            print("Warning: Empty content provided to _split_into_chunks")
+            self.logger.warning("Empty content provided to _split_into_chunks")
             return []
             
         chunks = []
@@ -205,5 +187,5 @@ class DiscordService:
         if current_chunk:
             chunks.append(current_chunk.strip())
             
-        print(f"Split content into {len(chunks)} chunks")
+        self.logger.debug("Split content into %s chunks", len(chunks))
         return chunks

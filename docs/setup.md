@@ -33,6 +33,8 @@ DISCORD_SERVER_ID=your_discord_server_id
 OPENAI_API_KEY=your_openai_api_key
 ```
 
+Core code reads these through `config/app_config.py`.
+
 Posting workflows need extra keys for Discord webhooks, Twitter/X, Reddit, HackMD, or Meta. See `config/.env.example`.
 
 ## DiscordChatExporter

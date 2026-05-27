@@ -26,7 +26,7 @@ from rich.table import Table
 from rich.markdown import Markdown
 import inquirer  # Add this import for interactive prompts
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.prompts import SummaryPrompts

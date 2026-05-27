@@ -1,4 +1,5 @@
 """Process chunks of text into natural paragraphs."""
+from dataclasses import dataclass
 import re
 from typing import List, Optional
 
@@ -12,6 +13,15 @@ from helpers.processors.discord_link_processor import DiscordLinkProcessor
 from helpers.processors.text_processor import TextProcessor
 from helpers.processors.update_extractor import UpdateExtractor
 from helpers.processors.update_deduplicator import UpdateDeduplicator
+
+
+@dataclass
+class UpdateGenerationResult:
+    """Structured result from chunk update generation."""
+
+    collected_updates: List[str]
+    deduplicated_updates: List[str]
+    bullet_points: List[BulletPoint]
 
 
 class BulletProcessor(BaseService):
@@ -65,6 +75,10 @@ class BulletProcessor(BaseService):
 
     def process_chunks(self, chunks: List[str]) -> List[str]:
         """Process multiple chunks into updates."""
+        return self.process_chunks_result(chunks).deduplicated_updates
+
+    def process_chunks_result(self, chunks: List[str]) -> UpdateGenerationResult:
+        """Process multiple chunks and return full generation details."""
         self.logger.info("Processing %s chunks", len(chunks))
         for i, chunk in enumerate(chunks, 1):
             chunk_channels = set(re.findall(r'Channel Name: (\w+)', chunk))
@@ -118,7 +132,11 @@ class BulletProcessor(BaseService):
         for update in deduplicated_updates:
             self.logger.debug("Deduplicated update: %s", update)
 
-        return deduplicated_updates
+        return UpdateGenerationResult(
+            collected_updates=collected_updates,
+            deduplicated_updates=deduplicated_updates,
+            bullet_points=self._last_processed_bullets,
+        )
 
     def get_last_processed_bullets(self) -> List[BulletPoint]:
         """Retrieve the last processed bullets."""

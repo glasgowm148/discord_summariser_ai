@@ -23,7 +23,8 @@ output/YYYY-MM-DD/
 | Script | Purpose |
 | --- | --- |
 | `scripts/export_chat.sh` | Interactive full-guild export. |
-| `scripts/export.sh` | Interactive channel export wizard with guild/channel/timeframe/format menus. |
+| `scripts/export.sh` | Thin wrapper for Python interactive export wizard. |
+| `scripts/export_wizard.py` | Interactive channel export wizard with guild/channel/timeframe/format menus. |
 | `scripts/export_server.sh` | Interactive full-server export variant. |
 | `scripts/export_channel.sh` | Channel export by ID and day count. |
 | `scripts/export_dev_history.sh` | One-year development channel export. |

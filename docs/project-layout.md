@@ -30,8 +30,9 @@ requirements.txt
 | File | Purpose |
 | --- | --- |
 | `scripts/summarise.py` | Main interactive summary workflow. |
-| `scripts/summarise2.py` | Older experimental rich/inquirer CLI. |
+| `scripts/legacy/summarise2.py` | Older experimental rich/inquirer CLI. |
 | `scripts/export_chat.sh` | Full guild export. |
 | `scripts/export_channel.sh` | Single channel export. |
 | `scripts/export_and_extract.sh` | Export and extract questions. |
+| `scripts/export_wizard.py` | Python implementation behind `scripts/export.sh`. |
 | `scripts/build_knowledge_base.py` | Build project database from historical CSVs. |

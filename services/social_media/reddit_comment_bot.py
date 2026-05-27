@@ -53,33 +53,32 @@ twitter_service = TwitterService()
 
 def extract_url(text):
     """Extract first URL from text"""
-    print(f"[extract_url] ENTRY: text = {text}")
+    logger.debug(f"[extract_url] ENTRY: text = {text}")
 
     try:
         url_pattern = r'https?://\S+'
-        print(f"[extract_url] Using URL pattern: {url_pattern}")
+        logger.debug(f"[extract_url] Using URL pattern: {url_pattern}")
 
         match = re.search(url_pattern, text)
 
         if match:
             url = match.group(0)
-            print(f"[extract_url] URL found: {url}")
+            logger.debug(f"[extract_url] URL found: {url}")
         else:
             url = None
-            print("[extract_url] No URL found in text")
+            logger.debug("[extract_url] No URL found in text")
 
-        print(f"[extract_url] EXIT: returning {url}")
+        logger.debug(f"[extract_url] EXIT: returning {url}")
         return url
 
     except Exception as e:
-        print(f"[extract_url] EXCEPTION: {e}")
-        print(f"[extract_url] Traceback: {traceback.format_exc()}")
+        logger.debug(f"[extract_url] EXCEPTION: {e}")
+        logger.debug(f"[extract_url] Traceback: {traceback.format_exc()}")
         return None
 
 def generate_reddit_title(content, url=None, max_title_length=80):
     """Generate a community-focused, engaging Reddit title"""
-    print("TESTWTF2")
-    print(f"[generate_reddit_title] ENTRY: content = {content[:100]}, url = {url}")
+    logger.debug(f"[generate_reddit_title] ENTRY: content = {content[:100]}, url = {url}")
 
     try:
         # Truncate content to first 300 characters to prevent overly long context
@@ -87,13 +86,13 @@ def generate_reddit_title(content, url=None, max_title_length=80):
 
         # Determine prompt type
         if url and ('docs' in url or 'documentation' in content.lower()):
-            print("[generate_reddit_title] Detected technical documentation context")
+            logger.debug("[generate_reddit_title] Detected technical documentation context")
             prompt = f"Create a concise, community-engaging title for a technical documentation link. Avoid first-person language. Keep it under {max_title_length} characters. Content context: {truncated_content}"
         else:
-            print("[generate_reddit_title] Detected general content context")
+            logger.debug("[generate_reddit_title] Detected general content context")
             prompt = f"Create a catchy, community-focused title that encourages engagement. Avoid first-person language. Keep it under {max_title_length} characters. Content context: {truncated_content}"
 
-        print(f"[generate_reddit_title] Generated prompt: {prompt}")
+        logger.debug(f"[generate_reddit_title] Generated prompt: {prompt}")
 
         # Generate title using OpenAI
         response = client.chat.completions.create(
@@ -110,32 +109,31 @@ def generate_reddit_title(content, url=None, max_title_length=80):
         # Remove surrounding quotes and truncate
         title = title.strip('"\'')[:max_title_length]
 
-        print(f"[generate_reddit_title] Generated title: {title}")
+        logger.debug(f"[generate_reddit_title] Generated title: {title}")
         logger.info(f"Generated Reddit title: {title}")
 
-        print(f"[generate_reddit_title] EXIT: returning {title}")
+        logger.debug(f"[generate_reddit_title] EXIT: returning {title}")
         return title
 
     except Exception as e:
-        print(f"[generate_reddit_title] EXCEPTION: {e}")
-        print(f"[generate_reddit_title] Traceback: {traceback.format_exc()}")
+        logger.debug(f"[generate_reddit_title] EXCEPTION: {e}")
+        logger.debug(f"[generate_reddit_title] Traceback: {traceback.format_exc()}")
 
         # Fallback title generation
         fallback_title = f"Community Insight: {content[:50]}..." if not url else f"New Resource: {url.split('/')[-1]}"
         fallback_title = fallback_title[:max_title_length]
-        print(f"[generate_reddit_title] Fallback title: {fallback_title}")
+        logger.debug(f"[generate_reddit_title] Fallback title: {fallback_title}")
 
         return fallback_title
 
 def prepare_reddit_submission(message_content, url=None):
     """Prepare content for Reddit submission"""
-    print("TESTWTF3")
-    print(f"[prepare_reddit_submission] ENTRY: message_content = {message_content[:100]}, url = {url}")
+    logger.debug(f"[prepare_reddit_submission] ENTRY: message_content = {message_content[:100]}, url = {url}")
 
     try:
         # If URL is present, prepare a link post
         if url:
-            print(f"[prepare_reddit_submission] Preparing link post with URL: {url}")
+            logger.debug(f"[prepare_reddit_submission] Preparing link post with URL: {url}")
             title = generate_reddit_title(message_content, url)
 
             submission = {
@@ -144,11 +142,11 @@ def prepare_reddit_submission(message_content, url=None):
                 'selftext': ''  # No additional text for link posts
             }
 
-            print(f"[prepare_reddit_submission] Link post prepared: {submission}")
+            logger.debug(f"[prepare_reddit_submission] Link post prepared: {submission}")
             return submission
 
         # For text-based posts
-        print("[prepare_reddit_submission] Preparing text-based post")
+        logger.debug("[prepare_reddit_submission] Preparing text-based post")
 
         # Transform text using OpenAI
         response = client.chat.completions.create(
@@ -161,7 +159,7 @@ def prepare_reddit_submission(message_content, url=None):
         )
 
         transformed_text = response.choices[0].message.content.strip()
-        print(f"[prepare_reddit_submission] Transformed text: {transformed_text[:200]}...")
+        logger.debug(f"[prepare_reddit_submission] Transformed text: {transformed_text[:200]}...")
 
         title = generate_reddit_title(message_content)
 
@@ -170,13 +168,13 @@ def prepare_reddit_submission(message_content, url=None):
             'selftext': transformed_text
         }
 
-        print(f"[prepare_reddit_submission] Text post prepared: {submission}")
-        print(f"[prepare_reddit_submission] EXIT: returning submission")
+        logger.debug(f"[prepare_reddit_submission] Text post prepared: {submission}")
+        logger.debug(f"[prepare_reddit_submission] EXIT: returning submission")
         return submission
 
     except Exception as e:
-        print(f"[prepare_reddit_submission] EXCEPTION: {e}")
-        print(f"[prepare_reddit_submission] Traceback: {traceback.format_exc()}")
+        logger.debug(f"[prepare_reddit_submission] EXCEPTION: {e}")
+        logger.debug(f"[prepare_reddit_submission] Traceback: {traceback.format_exc()}")
 
         # Fallback submission
         fallback_submission = {
@@ -184,47 +182,47 @@ def prepare_reddit_submission(message_content, url=None):
             'selftext': message_content
         }
 
-        print(f"[prepare_reddit_submission] Fallback submission: {fallback_submission}")
+        logger.debug(f"[prepare_reddit_submission] Fallback submission: {fallback_submission}")
         return fallback_submission
 
 @bot.event
 async def on_reaction_add(reaction, user):
     """Handle specific emoji reactions"""
-    print(f"[on_reaction_add] ENTRY: reaction = {reaction.emoji}, user = {user.name}")
-    print(f"[on_reaction_add] Reaction type: {type(reaction.emoji)}")
+    logger.debug(f"[on_reaction_add] ENTRY: reaction = {reaction.emoji}, user = {user.name}")
+    logger.debug(f"[on_reaction_add] Reaction type: {type(reaction.emoji)}")
 
     # Ignore bot's own reactions
     if user.bot:
-        print("[on_reaction_add] Ignoring bot's own reaction")
+        logger.debug("[on_reaction_add] Ignoring bot's own reaction")
         return
 
     message = reaction.message
     logger.info(f"Reaction added: {reaction.emoji} by {user.name}")
 
     # Check for custom Reddit emoji
-    print(f"[on_reaction_add] Checking emoji: {reaction.emoji}")
-    print(f"[on_reaction_add] Emoji name: {getattr(reaction.emoji, 'name', 'No name')}")
+    logger.debug(f"[on_reaction_add] Checking emoji: {reaction.emoji}")
+    logger.debug(f"[on_reaction_add] Emoji name: {getattr(reaction.emoji, 'name', 'No name')}")
 
     if isinstance(reaction.emoji, discord.PartialEmoji):
-        print(f"[on_reaction_add] PartialEmoji detected: {reaction.emoji.name}")
+        logger.debug(f"[on_reaction_add] PartialEmoji detected: {reaction.emoji.name}")
 
     if isinstance(reaction.emoji, discord.PartialEmoji) and reaction.emoji.name == 'reddit':
-        print("[on_reaction_add] Reddit emoji detected")
+        logger.debug("[on_reaction_add] Reddit emoji detected")
 
         # Extract URL if present
         url = extract_url(message.content)
-        print(f"[on_reaction_add] Extracted URL: {url}")
+        logger.debug(f"[on_reaction_add] Extracted URL: {url}")
 
         # Generate title
         title = generate_reddit_title(message.content, url)
-        print(f"[on_reaction_add] Generated title: {title}")
+        logger.debug(f"[on_reaction_add] Generated title: {title}")
 
         # Determine content (URL or message text)
         content = url or message.content
-        print(f"[on_reaction_add] Content to post: {content}")
+        logger.debug(f"[on_reaction_add] Content to post: {content}")
 
         try:
-            print("[on_reaction_add] Attempting to post to Reddit")
+            logger.debug("[on_reaction_add] Attempting to post to Reddit")
 
             # Post to Reddit
             success = await reddit_service.post_to_reddit(
@@ -233,52 +231,52 @@ async def on_reaction_add(reaction, user):
             )
 
             if success:
-                print("[on_reaction_add] Successfully posted to Reddit")
+                logger.debug("[on_reaction_add] Successfully posted to Reddit")
                 logger.info("Successfully posted to Reddit")
                 await message.add_reaction('✅')
             else:
-                print("[on_reaction_add] Failed to post to Reddit")
+                logger.debug("[on_reaction_add] Failed to post to Reddit")
                 logger.error("Failed to post to Reddit")
                 await message.add_reaction('❌')
 
         except Exception as e:
-            print(f"[on_reaction_add] Reddit Posting EXCEPTION: {e}")
-            print(f"[on_reaction_add] Reddit Posting Traceback: {traceback.format_exc()}")
+            logger.debug(f"[on_reaction_add] Reddit Posting EXCEPTION: {e}")
+            logger.debug(f"[on_reaction_add] Reddit Posting Traceback: {traceback.format_exc()}")
             logger.error(f"Unexpected error posting to Reddit: {e}")
             logger.error(traceback.format_exc())
             await message.add_reaction('❌')
 
     # Check for custom Twitter emoji
     elif isinstance(reaction.emoji, discord.PartialEmoji) and reaction.emoji.name == 'twitter':
-        print("[on_reaction_add] Twitter emoji detected")
-        print(f"[on_reaction_add] Full message content: {message.content}")
+        logger.debug("[on_reaction_add] Twitter emoji detected")
+        logger.debug(f"[on_reaction_add] Full message content: {message.content}")
 
         # Extract URL if present
         url = extract_url(message.content)
-        print(f"[on_reaction_add] Extracted URL for Twitter: {url}")
+        logger.debug(f"[on_reaction_add] Extracted URL for Twitter: {url}")
 
         try:
-            print("[on_reaction_add] Preparing to post to Twitter")
-            print(f"[on_reaction_add] Content to post: {message.content}")
-            print(f"[on_reaction_add] URL to post: {url}")
+            logger.debug("[on_reaction_add] Preparing to post to Twitter")
+            logger.debug(f"[on_reaction_add] Content to post: {message.content}")
+            logger.debug(f"[on_reaction_add] URL to post: {url}")
 
             # Post to Twitter
             twitter_service.send_tweet(message.content)
 
-            print("[on_reaction_add] Successfully posted to Twitter")
+            logger.debug("[on_reaction_add] Successfully posted to Twitter")
             logger.info("Successfully posted to Twitter")
             await message.add_reaction('✅')
 
         except Exception as e:
-            print(f"[on_reaction_add] Twitter Posting EXCEPTION: {e}")
-            print(f"[on_reaction_add] Twitter Posting Traceback: {traceback.format_exc()}")
+            logger.debug(f"[on_reaction_add] Twitter Posting EXCEPTION: {e}")
+            logger.debug(f"[on_reaction_add] Twitter Posting Traceback: {traceback.format_exc()}")
             logger.error(f"Error posting to Twitter: {e}")
             await message.add_reaction('❌')
 
 def main():
-    print("[main] ENTRY: Starting Discord bot...")
+    logger.debug("[main] ENTRY: Starting Discord bot...")
     bot.run(DISCORD_TOKEN)
-    print("[main] EXIT: Discord bot run completed")
+    logger.debug("[main] EXIT: Discord bot run completed")
 
 if __name__ == "__main__":
     main()
