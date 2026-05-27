@@ -160,11 +160,34 @@ cython_debug/
 #.idea/
 scripts/DiscordChatExporter/*
 config/.env
+config/.env.local
+config/.env.root-backup
+config/.env.backup*
 DiscordChatExporter/*
 output/*
-sent_summaries.md
-sent_summaries.md
 sent_summaries.md
 .DS_Store
 .aider*
 .env
+
+.codegpt
+
+# Local exports and generated data
+guild/
+*.log
+*.sqlite
+*.sqlite-*
+Ergo Platform - *.txt
+Ergo Platform - *.json
+dev-.txt
+rosen*.txt
+questions_for_ama.txt
+utils/*chat*.txt
+utils/dev*.txt
+utils/ergo_chat_data.json
+utils/extracted_log_data.txt
+utils/test.txt
+
+# Tool caches
+.trunk/
+.ruff_cache/

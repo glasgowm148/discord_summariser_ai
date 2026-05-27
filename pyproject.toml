@@ -1,0 +1,48 @@
+[project]
+name = "discord-summariser-ai"
+version = "0.1.0"
+description = "Discord export summarisation pipeline for Ergo community updates."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "discord.py==2.3.2",
+  "emoji==2.14.0",
+  "humanize==4.11.0",
+  "inquirer==3.4.0",
+  "openai==1.53.0",
+  "pandas==2.2.3",
+  "playwright==1.48.0",
+  "pydantic==2.9.2",
+  "python-dotenv==1.0.1",
+  "requests==2.32.3",
+  "requests-oauthlib==2.0.0",
+  "rich==13.9.4",
+  "selenium==4.26.1",
+  "tabulate==0.9.0",
+  "tqdm==4.66.6",
+  "webdriver-manager==4.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.4",
+  "ruff==0.8.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+  "guild",
+  "output",
+  "DiscordChatExporter",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

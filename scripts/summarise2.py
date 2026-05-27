@@ -9,6 +9,8 @@ import os
 import re
 import json
 import logging
+import sys
+from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
 import pandas as pd
 from openai import OpenAI
@@ -24,11 +26,14 @@ from rich.table import Table
 from rich.markdown import Markdown
 import inquirer  # Add this import for interactive prompts
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 from utils.prompts import SummaryPrompts
 from services.social_media.discord_service import DiscordService  # Import Discord service
 
 # Load environment variables from .env file
-load_dotenv(os.path.join(os.path.dirname(__file__), 'config', '.env'))
+load_dotenv(PROJECT_ROOT / 'config' / '.env')
 
 # Configure logging
 logging.basicConfig(
@@ -372,7 +377,7 @@ class DiscordSummarizer:
                 "\n- PRESERVE original message nuances"
                 "\n- USE DIVERSE EMOJIS reflecting the update's CONTEXT"
                 "\n\nSTRICTLY ADHERE to ALL formatting and topic integration guidelines!"
-                "\n\nIF NO MEANINGFUL UPDATES EXIST AFTER FILTERING, RETURN 'No significant updates this week.'"
+                "\n\nTHIS IS A GRASSROOTS COMMUNITY WITH MANY PROJECTS AND TEAMS WORKING. USE THE CHANNEL NAME / SURROUNDING MESSAGES FOR CONTEXT'"
             )
             
             # Generate summary
@@ -484,7 +489,7 @@ class DiscordSummarizer:
 
 def main():
     # Path to input CSV
-    input_csv = 'output/export-668903786361651200-04Nov_11Nov_233050_7d/json_cleaned_8d.csv'
+    input_csv = 'output/export-668903786361651200-06Dec_09Dec_120758_3d/json_cleaned_4d.csv'
     
     try:
         # Initialize summarizer

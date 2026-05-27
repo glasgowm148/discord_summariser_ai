@@ -32,12 +32,16 @@ class SummaryFinalizer(BaseService):
             raise
 
     def create_final_summary(
-        self, updates: List[str], days_covered: int, hackmd_url: Optional[str] = None
+        self,
+        updates: List[str],
+        days_covered: int,
+        hackmd_url: Optional[str] = None,
+        reddit_updates: Optional[List[str]] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Create summaries for different platforms."""
         try:
             # Store original updates for Reddit version
-            original_updates = updates.copy()
+            original_updates = (reddit_updates or updates).copy()
 
             # Validate categories and clean up formatting
             validated_updates = ContentValidator.validate_categories(updates)

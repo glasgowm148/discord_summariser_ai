@@ -65,19 +65,15 @@ class BulletProcessor(BaseService):
 
     def process_chunks(self, chunks: List[str]) -> List[str]:
         """Process multiple chunks into updates."""
-        print("\n" + "=" * 80)
-        print("CHUNK PROCESSING DIAGNOSTIC")
-        print("=" * 80)
-        print(f"Total chunks: {len(chunks)}")
-        
-        # Log details of each chunk
+        self.logger.info("Processing %s chunks", len(chunks))
         for i, chunk in enumerate(chunks, 1):
-            print(f"\nChunk {i}:")
-            print(f"  Length: {len(chunk)} characters")
-            
-            # Extract and print unique channels in this chunk
             chunk_channels = set(re.findall(r'Channel Name: (\w+)', chunk))
-            print(f"  Channels: {', '.join(chunk_channels)}")
+            self.logger.debug(
+                "Chunk %s length=%s channels=%s",
+                i,
+                len(chunk),
+                ", ".join(sorted(chunk_channels)),
+            )
         
         collected_updates = []
         self.total_updates = 0
@@ -114,15 +110,13 @@ class BulletProcessor(BaseService):
         # Create BulletPoint objects for the deduplicated updates
         self._last_processed_bullets = [self._create_update_point(update) for update in deduplicated_updates]
 
-        # Log final update details
-        print("\n" + "=" * 80)
-        print("FINAL UPDATE DETAILS")
-        print("=" * 80)
-        print(f"Total collected updates: {len(collected_updates)}")
-        print(f"Total deduplicated updates: {len(deduplicated_updates)}")
-        print("\nDeduplicated Updates:")
+        self.logger.info(
+            "Collected %s updates, deduplicated to %s",
+            len(collected_updates),
+            len(deduplicated_updates),
+        )
         for update in deduplicated_updates:
-            print(update)
+            self.logger.debug("Deduplicated update: %s", update)
 
         return deduplicated_updates
 
@@ -203,7 +197,6 @@ class BulletProcessor(BaseService):
         channel_match = re.search(r'Channel Name:\s*(\w+)', text)
         if channel_match:
             update.channel_name = channel_match.group(1)
-            print(f"\n🔍 EXTRACTED CHANNEL NAME: {update.channel_name}\n")
             self.logger.info(f"Extracted channel name: {update.channel_name}")
 
         # Extract project name more intelligently
@@ -225,7 +218,6 @@ class BulletProcessor(BaseService):
                 # If it's a channel category and we have an extracted channel name, use that
                 if update.channel_name:
                     update.project_name = update.channel_name
-                    print(f"\n🏷️ USING CHANNEL NAME AS PROJECT NAME: {update.project_name}\n")
                     self.logger.info(f"Using channel name as project name: {update.project_name}")
                 else:
                     # Fallback to a generic name if no channel name is available
@@ -238,8 +230,6 @@ class BulletProcessor(BaseService):
                 update.content = text.replace(f"**{project_name}**", f"**{simplified_name}**")
                 update.project_name = simplified_name
 
-        # Final logging to verify project name
-        print(f"\n📝 FINAL PROJECT NAME: {update.project_name}\n")
         self.logger.info(f"Final project name: {update.project_name}")
 
         return update

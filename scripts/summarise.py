@@ -1,10 +1,14 @@
 """Main entry point for Discord chat summarization."""
-import os
 import asyncio
-from typing import Optional, List, Tuple
-from dotenv import load_dotenv
-from services.social_media.reddit_service import RedditService
+import os
+import sys
 from pathlib import Path
+from typing import Optional, List, Tuple
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from dotenv import load_dotenv
 
 from config.settings import (
     CONFIG_DIR,
@@ -14,10 +18,7 @@ from config.settings import (
 from services.base_service import BaseService
 from services.csv_loader import CsvLoaderService
 from services.summary_generator import SummaryGenerator
-from services.social_media.discord_service import DiscordService
-from services.social_media.twitter_service import TwitterService
 from helpers.processors.bullet_processor import BulletPoint
-from services.meta_service import MetaService
 from utils.logging_config import setup_logging
 
 
@@ -68,10 +69,10 @@ class ChatSummariser(BaseService):
             self.csv_loader = CsvLoaderService()
             self.summary_generator = SummaryGenerator(
                 os.getenv("OPENAI_API_KEY"))
-            self.discord_service = DiscordService()
-            self.twitter_service = TwitterService()
-            self.reddit_service = RedditService()
-            self.meta_service = MetaService()
+            self.discord_service = None
+            self.twitter_service = None
+            self.reddit_service = None
+            self.meta_service = None
         except Exception as e:
             self.handle_error(e, {"context": "Service initialization"})
             raise
@@ -152,8 +153,8 @@ class ChatSummariser(BaseService):
                 print(reddit_summary)
                 print("-" * 50)
                 if input("\nWould you like to post this summary to Reddit? (y/n): ").lower() == 'y':
-                    self.discord_service.send_reddit_summary(reddit_summary)
-                    self._post_to_reddit(reddit_summary)
+                    self._get_discord_service().send_reddit_summary(reddit_summary)
+                    await self._post_to_reddit(reddit_summary)
 
             # Twitter Summary
             if input("\nWould you like to generate a Twitter summary from these bullets? (y/n): ").lower() == 'y':
@@ -174,7 +175,7 @@ class ChatSummariser(BaseService):
                     print(formatted_summary)
                     print("-" * 50)
                     if input("\nWould you like to post this summary to Twitter? (y/n): ").lower() == 'y':
-                        self.twitter_service.send_tweet(formatted_summary)
+                        self._get_twitter_service().send_tweet(formatted_summary)
                         self.logger.info("Successfully sent to Twitter")
                 else:
                     self.logger.error("Twitter summary generation failed")
@@ -207,10 +208,10 @@ class ChatSummariser(BaseService):
 
             if days_covered > 5:
                 self.logger.info("Sending as weekly message...")
-                self.discord_service.send_weekly_message(summary)
+                self._get_discord_service().send_weekly_message(summary)
             else:
                 self.logger.info("Sending as daily message...")
-                self.discord_service.send_daily_message(summary)
+                self._get_discord_service().send_daily_message(summary)
 
             self.logger.info("Successfully sent to Discord")
 
@@ -220,12 +221,12 @@ class ChatSummariser(BaseService):
                 "summary_length": len(summary)
             })
 
-    def _post_to_reddit(self, reddit_summary: str) -> None:
+    async def _post_to_reddit(self, reddit_summary: str) -> None:
         """Post summary to Reddit."""
         try:
             days = self.csv_loader.get_days_covered()
             title = f"Ergo Development Update - {days} Day Roundup"
-            if self.reddit_service.post_to_reddit(title, reddit_summary):
+            if await self._get_reddit_service().post_to_reddit(title, reddit_summary):
                 self.logger.info("Successfully posted to Reddit")
             else:
                 self.logger.error("Failed to post to Reddit")
@@ -235,10 +236,38 @@ class ChatSummariser(BaseService):
     async def _prompt_meta_post(self, summary_with_call_to_action: str) -> None:
         """Prompt user for Meta platform posting."""
         try:
-            await self.meta_service.prompt_and_post(summary_with_call_to_action)
+            await self._get_meta_service().prompt_and_post(summary_with_call_to_action)
             self.logger.info("Meta platform posting process completed")
         except Exception as e:
             self.handle_error(e, {"context": "Meta posting"})
+
+    def _get_discord_service(self):
+        """Create Discord service only when posting is requested."""
+        if self.discord_service is None:
+            from services.social_media.discord_service import DiscordService
+            self.discord_service = DiscordService()
+        return self.discord_service
+
+    def _get_twitter_service(self):
+        """Create Twitter service only when posting is requested."""
+        if self.twitter_service is None:
+            from services.social_media.twitter_service import TwitterService
+            self.twitter_service = TwitterService()
+        return self.twitter_service
+
+    def _get_reddit_service(self):
+        """Create Reddit service only when posting is requested."""
+        if self.reddit_service is None:
+            from services.social_media.reddit_service import RedditService
+            self.reddit_service = RedditService()
+        return self.reddit_service
+
+    def _get_meta_service(self):
+        """Create Meta service only when posting is requested."""
+        if self.meta_service is None:
+            from services.meta_service import MetaService
+            self.meta_service = MetaService()
+        return self.meta_service
 
 
 if __name__ == "__main__":

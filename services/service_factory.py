@@ -4,20 +4,15 @@ from typing import Optional
 
 from openai import OpenAI
 
-from services.base_service import BaseService
 from helpers.processors.bullet_processor import BulletProcessor
 from helpers.processors.bullet_validator import BulletValidator
 from helpers.processors.chunk_processor import ChunkProcessor
 from helpers.processors.discord_link_processor import DiscordLinkProcessor
 from helpers.processors.update_extractor import UpdateExtractor
 from helpers.processors.update_deduplicator import UpdateDeduplicator
-from services.hackmd_service import HackMDService
 from services.summary_finalizer import SummaryFinalizer
 from services.summary_generator import SummaryGenerator
 from helpers.processors.text_processor import TextProcessor
-from services.social_media.discord_service import DiscordService
-from services.social_media.reddit_service import RedditService
-from services.social_media.twitter_service import TwitterService
 
 
 class ServiceFactory:
@@ -97,22 +92,30 @@ class ServiceFactory:
     def create_hackmd_service(
         self, 
         api_key: Optional[str] = None
-    ) -> HackMDService:
+    ):
         """Create a HackMDService instance."""
+        from services.hackmd_service import HackMDService
+
         return HackMDService(
             api_key=api_key or os.getenv('HACKMD_API_KEY')
         )
 
-    def create_discord_service(self) -> DiscordService:
+    def create_discord_service(self):
         """Create a DiscordService instance."""
+        from services.social_media.discord_service import DiscordService
+
         return DiscordService()
 
-    def create_reddit_service(self) -> RedditService:
+    def create_reddit_service(self):
         """Create a RedditService instance."""
+        from services.social_media.reddit_service import RedditService
+
         return RedditService()
 
-    def create_twitter_service(self) -> TwitterService:
+    def create_twitter_service(self):
         """Create a TwitterService instance."""
+        from services.social_media.twitter_service import TwitterService
+
         return TwitterService()
 
     def create_summary_generator(
@@ -126,6 +129,4 @@ class ServiceFactory:
             chunk_processor=self.create_chunk_processor(),
             bullet_processor=self.create_bullet_processor(api_key, server_id),
             summary_finalizer=self.create_summary_finalizer(api_key),
-            hackmd_service=self.create_hackmd_service(),
-            discord_service=self.create_discord_service()
         )

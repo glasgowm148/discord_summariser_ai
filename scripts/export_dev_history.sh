@@ -2,10 +2,18 @@
 # Export 1 year of development channel history
 
 # Load configuration from config/.env file
-source config/.env
+if [ -f "config/.env" ]; then
+    source "config/.env"
+fi
+
+if [ -z "${DISCORD_TOKEN}" ] || [ -z "${DISCORD_SERVER_ID}" ]; then
+    echo "Error: DISCORD_TOKEN and DISCORD_SERVER_ID must be set in config/.env."
+    exit 1
+fi
 
 # Constants
-OUTPUT_DIR="./output"
+EXPORT_DATE=$(date -u '+%Y-%m-%d')
+OUTPUT_DIR="./output/${EXPORT_DATE}"
 EXPORTER="DiscordChatExporter/DiscordChatExporter-linux/mac/DiscordChatExporter.Cli.osx-arm64/DiscordChatExporter.Cli"
 DEV_CHANNEL="669989266478202917"
 
@@ -47,49 +55,9 @@ find "${EXPORT_DIR}" -type f -name "*.json"
 
 # Run the JSON cleaning script
 echo "Running JSON cleaning script..."
-python3 -c "
-from services.json_cleaner import JsonCleanerService
-import os
-
-cleaner = JsonCleanerService()
-json_files, search_dir = cleaner.get_json_files('${EXPORT_DIR}')
-all_cleaned_data = []
-error_log = []
-
-for json_file in json_files:
-    print(f'Processing JSON file: {json_file}')
-    try:
-        with open(json_file, 'r') as f:
-            data = __import__('json').load(f)
-        cleaned_data = cleaner.clean_chatlog_data(data)
-        all_cleaned_data.extend(cleaned_data)
-    except Exception as e:
-        error_message = f'Error processing file {json_file}: {e}'
-        print(error_message)
-        error_log.append(error_message)
-
-if all_cleaned_data:
-    cleaner.save_json(all_cleaned_data, search_dir)
-    days_covered = cleaner.get_days_covered(all_cleaned_data)
-    cleaner.save_csv(all_cleaned_data, search_dir, days_covered)
-    cleaner.print_stats(all_cleaned_data)
-
-if error_log:
-    with open(os.path.join(search_dir, 'error_log.txt'), 'w') as error_file:
-        error_file.write('\n'.join(error_log))
-"
+python3 scripts/clean_export.py "${EXPORT_DIR}" \
+    --historical-output "${OUTPUT_DIR}/historical/development_${DEV_CHANNEL}.csv" \
+    --cleanup-export-dir
 echo "JSON cleaning completed."
 
-# Move the CSV file to historical directory
-csv_file=$(find "${EXPORT_DIR}" -name "*.csv")
-if [ -n "$csv_file" ]; then
-    mv "$csv_file" "${OUTPUT_DIR}/historical/development_${DEV_CHANNEL}.csv"
-    echo "Successfully exported development channel"
-else
-    echo "No CSV file found for development channel"
-fi
-
-# Clean up the export directory
-rm -rf "${EXPORT_DIR}"
-
-echo "Export completed. Files saved in output/historical/"
+echo "Export completed. Files saved in ${OUTPUT_DIR}/historical/"

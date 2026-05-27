@@ -1,24 +1,70 @@
 # Configuration
 
-This directory contains configuration files for the chat summariser:
+Configuration lives in `config/.env`. Keep real tokens out of git.
 
-- `.env`: Environment variables for API keys, tokens, and other configuration
-  ```
-  # Discord Configuration
-  DISCORD_TOKEN=your_token_here
-  DISCORD_SERVER_ID=your_server_id_here
-  DISCORD_WEBHOOK_URL=your_webhook_url_here
-  DISCORD_WEBHOOK_URL_CHINESE=your_chinese_webhook_here
-  # ... other webhook URLs ...
+```bash
+cp config/.env.example config/.env
+```
 
-  # Twitter Configuration
-  TWITTER_CONSUMER_KEY=your_key_here
-  TWITTER_CONSUMER_SECRET=your_secret_here
-  TWITTER_ACCESS_TOKEN=your_token_here
-  TWITTER_ACCESS_TOKEN_SECRET=your_token_secret_here
+Then fill values for Discord, OpenAI, Twitter/X, Reddit, HackMD, and Meta as needed.
 
-  # OpenAI Configuration
-  OPENAI_API_KEY=your_api_key_here
-  ```
+## DiscordChatExporter
 
-Copy `.env.example` to `.env` and fill in your values.
+Set token in `config/.env` instead of pasting it into scripts or docs:
+
+```bash
+DISCORD_TOKEN=your_discord_token
+```
+
+Export one channel:
+
+```bash
+DiscordChatExporter/DiscordChatExporter-linux/mac/DiscordChatExporter.Cli.osx-arm64/DiscordChatExporter.Cli export \
+  --channel 669989266478202917 \
+  --token "$DISCORD_TOKEN" \
+  --after 2025-01-01 \
+  --format Json \
+  -o output/$(date -u '+%Y-%m-%d')/guild
+```
+
+Export guild:
+
+```bash
+DiscordChatExporter/DiscordChatExporter-linux/mac/DiscordChatExporter.Cli.osx-arm64/DiscordChatExporter.Cli exportguild \
+  --guild 668903786361651200 \
+  --token "$DISCORD_TOKEN" \
+  --format Json \
+  --include-vc false \
+  --parallel 10 \
+  -p 1000 \
+  -o output/$(date -u '+%Y-%m-%d')/guild
+```
+
+List channels:
+
+```bash
+DiscordChatExporter/DiscordChatExporter-linux/mac/DiscordChatExporter.Cli.osx-arm64/DiscordChatExporter.Cli channels \
+  --guild 668903786361651200 \
+  --token "$DISCORD_TOKEN"
+```
+
+Useful Ergo channel IDs:
+
+| Channel ID | Channel |
+| --- | --- |
+| 669989266478202917 | Lobby / development |
+| 964131671609860126 | Infra / Interop / rosen |
+| 840313005064585246 | Development / dev-support |
+| 849659724495323206 | Development / ergoscript-support |
+| 670288337747312646 | Lobby / support |
+| 908347206988365864 | Lobby / ask-anything |
+| 668913770059268125 | Lobby / mining |
+| 1073483623459725322 | Development / dev-tooling |
+| 802828538197573682 | Financial / sigmausd |
+
+Guild IDs:
+
+| Guild ID | Guild |
+| --- | --- |
+| 668903786361651200 | Ergo |
+| 597161478075711499 | Phenotype |

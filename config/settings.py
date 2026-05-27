@@ -27,19 +27,11 @@ ACTION_VERBS = [
     "enabled", "established", "introduced", "suggested", "recommended"
 ]
 
-# Required Environment Variables
+# Required variables for local summarisation.
+# Export and posting scripts validate their own platform-specific credentials.
 REQUIRED_ENV_VARS: Dict[str, str] = {
     "OPENAI_API_KEY": "OpenAI API key",
     "DISCORD_SERVER_ID": "Discord Server ID",
-    "TWITTER_CONSUMER_KEY": "Twitter Consumer Key",
-    "TWITTER_CONSUMER_SECRET": "Twitter Consumer Secret",
-    "TWITTER_ACCESS_TOKEN": "Twitter Access Token",
-    "TWITTER_ACCESS_TOKEN_SECRET": "Twitter Access Token Secret",
-    "DISCORD_WEBHOOK_URL": "Discord Webhook URL",
-    "META_FB_ACCESS_TOKEN": "Meta Facebook Access Token",
-    "META_IG_ACCESS_TOKEN": "Meta Instagram Access Token",
-    "META_FB_PAGE_ID": "Meta Facebook Page ID",
-    "META_IG_ACCOUNT_ID": "Meta Instagram Account ID"
 }
 
 def load_env_vars() -> None:

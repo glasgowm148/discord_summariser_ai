@@ -65,7 +65,7 @@ python services/social_media/reddit_comment_bot.py
 ```
 
 ## Logging & Debugging
-- Comprehensive logging in `discord_bot.log`
+- Comprehensive logging in `output/YYYY-MM-DD/logs/discord_bot.log`
 - Tracks submission process
 - Captures AI transformation details
 
@@ -75,7 +75,7 @@ python services/social_media/reddit_comment_bot.py
 - Configure webhook settings
 
 ## Troubleshooting
-- Check `discord_bot.log`
+- Check `output/YYYY-MM-DD/logs/discord_bot.log`
 - Verify API credentials
 - Ensure proper bot permissions
 

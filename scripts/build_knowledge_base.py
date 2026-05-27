@@ -42,12 +42,13 @@ def process_exports(days_per_summary: int = 7) -> None:
         summary_generator = SummaryGenerator(api_key)
         project_manager = ProjectManager()
 
-        # Get all CSV files in historical directory
-        historical_dir = Path(OUTPUT_DIR) / 'historical'
-        export_files = list(historical_dir.glob('*.csv'))
+        # Get all CSV files in dated historical directories, plus legacy fallback.
+        output_dir = Path(OUTPUT_DIR)
+        export_files = list(output_dir.glob('*/historical/*.csv'))
+        export_files.extend((output_dir / 'historical').glob('*.csv'))
 
         if not export_files:
-            logging.error("No export files found in output/historical/")
+            logging.error("No export files found in output/*/historical/")
             return
 
         # Process each time period

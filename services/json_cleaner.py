@@ -31,7 +31,7 @@ class JsonCleanerService:
         if input_dir:
             search_dir = input_dir
         else:
-            export_dirs = glob.glob('output/export-*')
+            export_dirs = glob.glob('output/*/export-*') + glob.glob('output/export-*')
             if not export_dirs:
                 raise FileNotFoundError("No export directories found under 'output/'")
             search_dir = max(export_dirs, key=os.path.getmtime)

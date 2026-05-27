@@ -3,16 +3,8 @@
 import os
 import re
 import sys
+import unittest
 from typing import Dict, List
-from utils.prompts import SummaryPrompts
-import openai
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv(dotenv_path="config/.env")
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ValueError("OPENAI_API_KEY environment variable is not set.")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -38,24 +30,18 @@ class SummaryValidator:
 
     def validate_summary(self, bullets: List[str]) -> Dict[str, List[str]]:
         """Validate the entire summary and suggest prompt improvements."""
-        all_issues = {"missing_projects": [], "bullet_issues": {}, "overall_issues": []}
-
-        # Check for missing projects
-        covered_projects = set()
-        for bullet in bullets:
-            project_match = re.search(r"\*\*([^*]+)\*\*", bullet)
-            if project_match:
-                covered_projects.add(project_match.group(1).strip())
-
-        # Find missing projects from expected projects
-        for project in self.expected_projects:
-            if project not in covered_projects:
-                all_issues["missing_projects"].append(f"Missing coverage for {project}")
+        all_issues = {
+            "missing_projects": self.get_missing_projects(bullets),
+            "bullet_issues": {},
+            "overall_issues": [],
+        }
 
         # Suggest improvements to the prompt
         self.suggest_prompt_improvements(all_issues["missing_projects"])
 
         # Generate a summary using SummaryPrompts
+        from utils.prompts import SummaryPrompts
+
         summary_prompt = SummaryPrompts.get_reddit_summary_prompt(
             bullets, days_covered=7
         )
@@ -82,6 +68,20 @@ class SummaryValidator:
 
         return all_issues
 
+    def get_missing_projects(self, bullets: List[str]) -> List[str]:
+        """Find expected projects absent from bold project headings."""
+        covered_projects = set()
+        for bullet in bullets:
+            project_match = re.search(r"\*\*([^*]+)\*\*", bullet)
+            if project_match:
+                covered_projects.add(project_match.group(1).strip())
+
+        return [
+            f"Missing coverage for {project}"
+            for project in self.expected_projects
+            if project not in covered_projects
+        ]
+
     def suggest_prompt_improvements(self, missing_projects: List[str]):
         """Suggest improvements to the prompt based on missing projects."""
         if missing_projects:
@@ -94,6 +94,13 @@ class SummaryValidator:
 
     def get_gpt_recommendations(self, prompt: str, bullets: List[str]) -> str:
         """Get recommendations from GPT-4 based on the prompt and bullets."""
+        import openai
+        from dotenv import load_dotenv
+
+        load_dotenv(dotenv_path="config/.env")
+        if not os.getenv("OPENAI_API_KEY"):
+            return "Skipped: OPENAI_API_KEY environment variable is not set."
+
         openai.api_key = os.getenv("OPENAI_API_KEY")
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
@@ -103,6 +110,22 @@ class SummaryValidator:
             ],
         )
         return response.choices[0].message.content.strip()
+
+
+class TestSummaryValidator(unittest.TestCase):
+    def test_get_missing_projects_uses_bold_project_names(self):
+        validator = SummaryValidator()
+
+        missing = validator.get_missing_projects(
+            [
+                "- **OnErgo**: shipped update.",
+                "- **Rosen Bridge**: discussed maintenance.",
+            ]
+        )
+
+        self.assertNotIn("Missing coverage for OnErgo", missing)
+        self.assertNotIn("Missing coverage for Rosen Bridge", missing)
+        self.assertIn("Missing coverage for Minotaur", missing)
 
 
 def main():
